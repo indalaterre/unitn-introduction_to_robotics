@@ -1,0 +1,2 @@
+export DISABLE_ROS1_EOL_WARNINGS=true
+roslaunch giraffe_robot display.launch

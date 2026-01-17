@@ -1,0 +1,90 @@
+# ========================
+# ROS Standard / Catkin
+# ========================
+devel/
+install/
+build/
+build_isolated/
+devel_isolated/
+install_isolated/
+logs/
+log/
+.catkin_workspace
+
+# ========================
+# Generated Messages & Services
+# ========================
+# Ignored if you generate custom messages/actions
+msg_gen/
+srv_gen/
+msg/*Action.msg
+msg/*ActionFeedback.msg
+msg/*ActionGoal.msg
+msg/*ActionResult.msg
+msg/*Feedback.msg
+msg/*Goal.msg
+msg/*Result.msg
+msg/_*.py
+srv/_*.py
+
+# ========================
+# Dynamic Reconfigure
+# ========================
+*.cfgc
+/cfg/cpp/
+/cfg/*.py
+
+# ========================
+# Python 3 (ROS Noetic Standard)
+# ========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# ========================
+# C++ / Compiled Files
+# ========================
+*.o
+*.obj
+*.so
+*.dylib
+*.dll
+*.a
+*.lib
+bin/
+lib/
+
+# ========================
+# IDEs & Editors
+# ========================
+# VS Code
+.vscode/
+
+# PyCharm / IntelliJ
+.idea/
+
+# Eclipse
+.project
+.cproject
+.pydevproject
+.settings/
+
+# Qt Creator
+CMakeLists.txt.user
+
+# Vim / Emacs
+*~
+*.swp
+*.swo
+.#*
+
+# ========================
+# OS Generated
+# ========================
+.DS_Store
+Thumbs.db

@@ -1,0 +1,6 @@
+<launch>
+    <param name="robot_description" textfile="$(find giraffe_robot)/urdf/giraffe.urdf" />
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find giraffe_robot)/config/GiraffeRobot.rviz" required="true" />
+</launch>
