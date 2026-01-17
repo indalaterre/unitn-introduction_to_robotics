@@ -32,7 +32,7 @@ def run_simulation(args):
     kp = 16 / settling_time ** 2
     kd = 2.0 * np.sqrt(kp)
     k_null = .1
-    pitch_desired = 0.5
+    pitch_desired = np.deg2rad(30)
     q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
     dq = np.zeros(robot_model.nq)
 
@@ -77,7 +77,10 @@ def run_simulation(args):
 
         # Updating joint parameters
         q, dq = new_parameters[0], new_parameters[1]
+        q = np.clip(q, robot_model.lowerPositionLimit, robot_model.upperPositionLimit)
+
         publish_to_ros(pub=pub, q=q)
+        rate.sleep()
 
         current_ee_position = new_positions[0]
 
@@ -97,13 +100,11 @@ def publish_to_ros(pub, q):
 
     pub.publish(msg)
 
-    rate.sleep()
-
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Intent and Slot Filling Task")
+    parser = argparse.ArgumentParser(description="Giraffe Robot ROS Simulation")
     parser.add_argument('--urdf', type=str, default='../urdf/giraffe.urdf', help='URDF file path')
-    parser.add_argument('--set_time', type=int, default='7', help='Set time')
+    parser.add_argument('--set_time', type=float, default=7.0, help='Set time')
     args = parser.parse_args()
 
     run_simulation(vars(args))

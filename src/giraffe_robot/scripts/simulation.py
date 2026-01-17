@@ -21,13 +21,13 @@ def calculate_robot_dynamics(model,
                              kd,
                              k_null):
     
-    ## Firstly we need to sync the robot with current math
+    ## Firstly, we need to sync the robot with current math
     pin.computeAllTerms(model, data, q, dq)
     pin.updateFramePlacements(model, data)
 
     current_position = data.oMf[ee_link_id].translation
 
-    # The end effector pitch is given by the sum of q2+q4
+    # The sum of q2+q4 gives the end effector pitch
     end_pitch = q[1] + q[3]
 
     j_task = calculate_task_jacobian(model, data, q, ee_link_id)
@@ -56,7 +56,7 @@ def calculate_robot_dynamics(model,
     tau_task = j_task.T @ f_task
 
     j_bar = inv_m @ j_task.T @ inertia
-    n = np.eye(model.nq) - j_task.T @ j_bar.T
+    n = np.eye(model.nq) - j_bar @ j_task
 
     tau_null = n @ (-k_null * (q - np.zeros(5)) - 2.0 * np.sqrt(k_null) * dq)
 
@@ -104,6 +104,8 @@ def simulate_robot_dynamics(model,
                                                                         data=data,
                                                                         ee_link_id=ee_link_id,
                                                                         pos_d=pos_d,
+                                                                        vel_d=np.zeros(3),
+                                                                        acc_d=np.zeros(3),
                                                                         pitch_d=pitch_d,
                                                                         dt=dt,
                                                                         q=q,
@@ -132,11 +134,11 @@ def run_simulation():
 
     # Simulations parameters
     dt = .001       # The minimum time step  (1ms)
-    total_time = 5  # The simulation will last 5s
+    total_time = 7  # The simulation will last 5s
     num_steps = int(total_time / dt)
 
     # Initial robot state
-    q = np.array([.0, .5, 1.0, -.5, .0])
+    q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
     dq = np.zeros(robot_model.nq)
 
     # Gains (Tunable)
@@ -145,8 +147,8 @@ def run_simulation():
     k_null = 1.0 # Null space stiffness (keep robot comfortable)
 
     # Desired state for the end-effector
-    pos_desired = np.array([1.0, 2.0, 2.0])
-    pitch_desired = 0.5 # The desired pitch in radiants
+    pos_desired = np.array([1.0, 2.0, 1.0])
+    pitch_desired = np.deg2rad(30)
 
     return simulate_robot_dynamics(model=robot_model,
                                    data=robot_data,
