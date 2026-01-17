@@ -27,7 +27,7 @@ def read_position_from_keyboard():
     return np.array([x, y, 1.0])
 
 def load_urdf_model(model_path):
-    urdf_path = os.path.join(os.path.dirname(__file__), '../urdf/giraffe.urdf')
+    urdf_path = os.path.join(os.path.dirname(__file__), model_path)
 
     model = pin.buildModelFromUrdf(urdf_path)
     data = model.createData()
@@ -114,3 +114,33 @@ def calculate_orientation_quaternion(roll, pitch, yaw):
     pitch_rad = math.radians(pitch)
     yaw_rad = math.radians(yaw)
     return quaternion_from_euler(roll_rad, pitch_rad, yaw_rad)
+
+def calculate_current_ee_position(model, data, q):
+
+    pin.forwardKinematics(model, data, q)
+    pin.updateFramePlacements(model, data)
+
+    return data.oMf[model.getFrameId('end_effector')].translation
+
+
+def generate_trajectory_plan(t, t_start, t_end, p_start, p_end):
+    if t < t_start:
+        return p_start, np.zeros_like(p_start), np.zeros_like(p_start)
+    elif t > t_end:
+        return p_end, np.zeros_like(p_end), np.zeros_like(p_end)
+    else:
+        T = t_end - t_start
+        tau = (t - t_start) / T
+
+        s = 10 * tau ** 3 - 15 * tau ** 4 + 6 * tau ** 5
+        ds = (30 * tau ** 2 - 60 * tau ** 3 + 30 * tau ** 4) / T
+        dds = (60 * tau - 180 * tau ** 2 + 120 * tau ** 3) / T ** 2
+
+        # Interpolation
+        pos = p_start + s * (p_end - p_start)
+        velocity = ds * (p_end - p_start)
+        acceleration = dds * (p_end - p_start)
+
+        return pos, velocity, acceleration
+
+
