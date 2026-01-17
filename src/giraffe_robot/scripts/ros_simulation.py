@@ -22,7 +22,7 @@ rate = rospy.Rate(1000)
 
 
 def run_simulation(args):
-    robot_model, robot_data, ee_link_id = load_urdf_model(model_path=args['model_path'])
+    robot_model, robot_data, ee_link_id = load_urdf_model(model_path=args['urdf'])
 
     settling_time = args['set_time']
 
@@ -55,9 +55,9 @@ def run_simulation(args):
 
             new_position = False
 
-        pos_d, vel_d, acc_d = generate_trajectory_plan(current_time,
-                                                       start_time,
-                                                       end_time,
+        pos_d, vel_d, acc_d = generate_trajectory_plan(current_time.to_sec(),
+                                                       start_time.to_sec(),
+                                                       end_time.to_sec(),
                                                        start_position,
                                                        pos_desired)
 
@@ -73,26 +73,33 @@ def run_simulation(args):
                                                                         kd=kd,
                                                                         k_null=k_null)
 
-        msg = JointState()
-        msg.header.stamp = rospy.Time.now()
-
-        msg.name = ['joint1_pan', 'joint2_tilt', 'joint3_prismatic', 'joint4_pitch', 'joint5_roll']
-        msg.position = new_parameters[0].tolist()
-
-        pub.publish(msg)
-
-        rate.sleep()
+        publish_to_ros(pub=pub, q=q)
 
         current_ee_position = new_positions[0]
 
-        if abs(np.linalg.norm(error[0])) < .0002:
+        time_completed = current_time >= (start_time + rospy.Duration.from_sec(settling_time))
+        pos_converged = np.linalg.norm(current_ee_position - pos_desired)
+
+        if time_completed and pos_converged:
             new_position = True
+
+
+def publish_to_ros(pub, q):
+    msg = JointState()
+    msg.header.stamp = rospy.Time.now()
+
+    msg.name = ['joint1_pan', 'joint2_tilt', 'joint3_prismatic', 'joint4_pitch', 'joint5_roll']
+    msg.position = q.tolist()
+
+    pub.publish(msg)
+
+    rate.sleep()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Intent and Slot Filling Task")
     parser.add_argument('--urdf', type=str, default='../urdf/giraffe.urdf', help='URDF file path')
-    parser.add_argument('--set_time', type=str, default='7s', help='Set time')
+    parser.add_argument('--set_time', type=int, default='7', help='Set time')
     args = parser.parse_args()
 
-    run_simulation(args)
+    run_simulation(vars(args))
