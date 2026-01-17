@@ -31,9 +31,9 @@ def run_simulation(args):
     # Settling time is approx 4 / sqrt(kp) ==> kp = 16 / settling_time ** 2
     kp = 16 / settling_time ** 2
     kd = 2.0 * np.sqrt(kp)
-    k_null = 1.0
+    k_null = .1
     pitch_desired = 0.5
-    q = np.array([0.0, 0.5, 1.0, -0.5, 0.0])
+    q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
     dq = np.zeros(robot_model.nq)
 
     new_position = True
@@ -47,8 +47,8 @@ def run_simulation(args):
 
         if new_position:
             start_position = current_ee_position
-            pos_desired = read_position_from_keyboard()
-            print(f'Moving microphone to: {pos_desired}')
+            chair_coords, pos_desired = read_position_from_keyboard()
+            publish_chair_markers(chair_coords)
 
             start_time = current_time
             end_time = current_time + rospy.Duration.from_sec(settling_time)
@@ -65,6 +65,8 @@ def run_simulation(args):
                                                                         data=robot_data,
                                                                         ee_link_id=ee_link_id,
                                                                         pos_d=pos_d,
+                                                                        vel_d=vel_d,
+                                                                        acc_d=acc_d,
                                                                         pitch_d=pitch_desired,
                                                                         dt=dt,
                                                                         q=q,
@@ -73,12 +75,14 @@ def run_simulation(args):
                                                                         kd=kd,
                                                                         k_null=k_null)
 
+        # Updating joint parameters
+        q, dq = new_parameters[0], new_parameters[1]
         publish_to_ros(pub=pub, q=q)
 
         current_ee_position = new_positions[0]
 
         time_completed = current_time >= (start_time + rospy.Duration.from_sec(settling_time))
-        pos_converged = np.linalg.norm(current_ee_position - pos_desired)
+        pos_converged = np.linalg.norm(current_ee_position - pos_desired) < .01
 
         if time_completed and pos_converged:
             new_position = True

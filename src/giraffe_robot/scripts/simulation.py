@@ -11,6 +11,8 @@ def calculate_robot_dynamics(model,
                              data,
                              ee_link_id,
                              pos_d,
+                             vel_d,
+                             acc_d,
                              pitch_d,
                              dt,
                              q,
@@ -34,17 +36,20 @@ def calculate_robot_dynamics(model,
     rotation_error = pitch_d - end_pitch
 
     error = np.hstack((position_error, rotation_error))
-    # j_task _dot_ dq give use the current velocity. Since we want the microphone to be still
-    # we need to consider the 0-velocity as target
-    d_error = np.zeros(4) - np.dot(j_task, dq)
+
+    v_task = np.hstack((vel_d, 0.0))
+    a_task = np.hstack((acc_d, 0.0))
+
+    d_error = v_task - np.dot(j_task, dq)
 
     # Computing the control (the acceleration)
-    a_cmd = kp * error + kd * d_error
+    a_cmd = a_task + kp * error + kd * d_error
 
     # Dynamics (calculating torques)
     inv_m = np.linalg.inv(data.M)
     # inertia = (J _dot_ M^-1 _dot_ J^T)^-1
-    inertia = np.linalg.inv(j_task @ inv_m @ j_task.T)
+    lambda_damping = 1e-6
+    inertia = np.linalg.inv(j_task @ inv_m @ j_task.T + lambda_damping * np.eye(4))
 
     # Calculating the forces
     f_task = inertia @ a_cmd
@@ -55,7 +60,9 @@ def calculate_robot_dynamics(model,
 
     tau_null = n @ (-k_null * (q - np.zeros(5)) - 2.0 * np.sqrt(k_null) * dq)
 
-    tau_total = tau_task + tau_null + data.g
+    # Calculates Gravity + Coriolis effect
+    nle = pin.nonLinearEffects(model, data, q, dq)
+    tau_total = tau_task + tau_null + nle
 
     # Calculating next q parameters
     ddq = pin.aba(model, data, q, dq, tau_total)

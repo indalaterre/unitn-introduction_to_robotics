@@ -24,7 +24,17 @@ def read_position_from_keyboard():
             print('\tWrong position...Please insert x,y values.')
 
     x, y = float(positions[0].strip()), float(positions[1].strip())
-    return np.array([x, y, 1.0])
+    print(f'Moving microphone to: {[x, y, 1.0]}')
+
+    ## Fixing coordinates to match the robot ones
+    grid_params = get_chairs_grid_parameters()
+
+    target_x = grid_params['x_start'] + (x * grid_params['row_spacing'])
+    target_y = grid_params['y_start'] + (y * grid_params['chair_spacing'])
+    if y > 4:
+        target_y += grid_params['aisle_gap']
+    
+    return (x, y), np.array([target_x, target_y, 1.0])
 
 def load_urdf_model(model_path):
     urdf_path = os.path.join(os.path.dirname(__file__), model_path)
@@ -49,31 +59,31 @@ def calculate_task_jacobian(model, data, q, ee_link_id):
     j_linear, j_pitch = j_full[:3, :], j_full[4, :]
     return np.vstack((j_linear, j_pitch))
 
-def publish_chair_markers():
-    print('Building environment...')
+def publish_chair_markers(selected_chair_coords=None):
     pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=1, latch=True)
 
     marker_array = MarkerArray()
 
     rows = 5
     chairs_per_row = 8
+    aisle_size = chairs_per_row / 2
 
-    row_spacing, chair_spacing, aisle_gap = 1, 1, 2
-
-    # 2m to for the speech stage, 5m to the left
-    x_start, y_start = -2, -4.5
+    grid_params = get_chairs_grid_parameters()
 
     chair_id = 0
     chairs_scale = .025
     chairs_orientation = calculate_orientation_quaternion(0, 0, 90)
 
+    std_color = [.6862, .6353, 1.0, 1.0]
+    selected_color = [.8824, .7098, .4235, 1.0]
+
     for r in range(rows):
-        current_x = x_start + r * row_spacing
+        current_x = grid_params['x_start'] + r * grid_params['row_spacing']
         
         for c in range(chairs_per_row):
-            current_y = y_start + c * chair_spacing
-            if c >= 4:
-                current_y += aisle_gap
+            current_y = grid_params['y_start'] + c * grid_params['chair_spacing']
+            if c >= aisle_size:
+                current_y += grid_params['aisle_gap']
 
             marker = Marker()
             marker.id = chair_id
@@ -96,10 +106,16 @@ def publish_chair_markers():
             marker.scale.y = chairs_scale
             marker.scale.z = chairs_scale
 
-            marker.color.r = .6862
-            marker.color.g = .6353
-            marker.color.b = 1
-            marker.color.a = 1.0
+            if selected_chair_coords and r == selected_chair_coords[0] and c == selected_chair_coords[1]:
+                marker.color.r = selected_color[0]
+                marker.color.g = selected_color[1]
+                marker.color.b = selected_color[2]
+                marker.color.a = selected_color[3]
+            else:
+                marker.color.r = std_color[0]
+                marker.color.g = std_color[1]
+                marker.color.b = std_color[2]
+                marker.color.a = std_color[3]
 
             marker.type = Marker.MESH_RESOURCE
             marker.mesh_resource = 'package://giraffe_robot/models/chair2.stl'
@@ -143,4 +159,14 @@ def generate_trajectory_plan(t, t_start, t_end, p_start, p_end):
 
         return pos, velocity, acceleration
 
+def get_chairs_grid_parameters():
+    return {
+        # 2m to for the speech stage, 5m to the left
+        'x_start': -2,
+        'y_start': -4.5,
+
+        'row_spacing': 1,
+        'chair_spacing': 1,
+        'aisle_gap': 2
+    }
 
