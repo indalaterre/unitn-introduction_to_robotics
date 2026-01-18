@@ -1,7 +1,7 @@
 import numpy as np
 import pinocchio as pin
 
-from utils import load_urdf_model, calculate_task_jacobian
+from utils import load_urdf_model, calculate_task_jacobian, calculate_desired_yaw
 
 def calculate_robot_dynamics(model,
                              data,
@@ -25,16 +25,27 @@ def calculate_robot_dynamics(model,
 
     # The sum of q2+q4 gives the end effector pitch
     end_pitch = q[1] + q[3]
+    
+    # Current yaw is just q[0] (joint1_pan)
+    current_yaw = q[0]
+    
+    # Desired yaw: point toward target position
+    yaw_d = calculate_desired_yaw(current_position, pos_d)
 
-    j_task = calculate_task_jacobian(model, data, q, ee_link_id)
+    # Use 5x5 task Jacobian (position + pitch + yaw)
+    j_task = calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=True)
 
     position_error = pos_d - current_position
-    rotation_error = pitch_d - end_pitch
+    pitch_error = pitch_d - end_pitch
+    yaw_error = yaw_d - current_yaw
+    
+    # Wrap yaw error to [-pi, pi]
+    yaw_error = np.arctan2(np.sin(yaw_error), np.cos(yaw_error))
 
-    error = np.hstack((position_error, rotation_error))
+    error = np.hstack((position_error, pitch_error, yaw_error))
 
-    v_task = np.hstack((vel_d, 0.0))
-    a_task = np.hstack((acc_d, 0.0))
+    v_task = np.hstack((vel_d, 0.0, 0.0))
+    a_task = np.hstack((acc_d, 0.0, 0.0))
 
     d_error = v_task - np.dot(j_task, dq)
 
@@ -44,7 +55,8 @@ def calculate_robot_dynamics(model,
     # Dynamics (calculating torques)
     inv_m = np.linalg.inv(data.M)
     # inertia = (J _dot_ M^-1 _dot_ J^T)^-1
-    damping_matrix = 1e-4 * np.eye(4)
+    # Task is now 5D (3 position + 1 pitch + 1 yaw)
+    damping_matrix = 1e-4 * np.eye(5)
     inertia = np.linalg.inv(j_task @ inv_m @ j_task.T + damping_matrix)
 
     # Calculating the forces
@@ -69,7 +81,7 @@ def calculate_robot_dynamics(model,
     dq += ddq * dt
     q  += dq * dt
 
-    return (position_error, rotation_error), (q, dq), (current_position, end_pitch)
+    return (position_error, pitch_error, yaw_error), (q, dq), (current_position, end_pitch, current_yaw)
     
 
 def simulate_robot_dynamics(model,
@@ -90,7 +102,8 @@ def simulate_robot_dynamics(model,
         'time': [],
         'joints': [],
         'pos_error': [],
-        'pitch_error': []
+        'pitch_error': [],
+        'yaw_error': []
     }
 
     q = initial_q.copy()
@@ -119,11 +132,12 @@ def simulate_robot_dynamics(model,
         # Storing joints historical data
         joint_history['time'].append(i * dt)
         joint_history['joints'].append(new_parameters[0].copy())
-        joint_history['pitch_error'].append(error[1])
         joint_history['pos_error'].append(np.linalg.norm(error[0]))
+        joint_history['pitch_error'].append(error[1])
+        joint_history['yaw_error'].append(error[2])
 
         if i % 500 == 0:
-            print(f'Time: {i * dt:.2f}s | PosError: {np.linalg.norm(error[0]):.4f} | PitchError: {error[1]:.4f}')
+            print(f'Time: {i * dt:.2f}s | PosErr: {np.linalg.norm(error[0]):.4f} | PitchErr: {error[1]:.4f} | YawErr: {error[2]:.4f}')
 
     return new_positions[0], new_positions[1], joint_history
 
