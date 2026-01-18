@@ -1,0 +1,12 @@
+<launch>
+    <!-- Cleaning Robot Display Launch File -->
+    
+    <!-- Load robot description -->
+    <param name="robot_description" textfile="$(find cleaning_robot)/urdf/assembly.urdf" />
+    
+    <!-- Robot state publisher -->
+    <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+    
+    <!-- RViz visualization -->
+    <node name="rviz" pkg="rviz" type="rviz" args="-d $(find cleaning_robot)/config/cleaning_robot.rviz" required="true" />
+</launch>
