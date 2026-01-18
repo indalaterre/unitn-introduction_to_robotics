@@ -47,17 +47,32 @@ def load_urdf_model(model_path):
 
     return model, data, ee_link_id
 
-def calculate_task_jacobian(model, data, q, ee_link_id):
+def calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=False):
     j_full = pin.computeFrameJacobian(model, 
                                       data, 
                                       q,
                                       ee_link_id, 
                                       pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
-    # Now we'll filter the full jacobian extracting only the data required by hour robot
     # We need the linear jacobian (first 3 rows)
-    # And the rotational jacobian (only row 4 as requested by the lab exercise)
-    j_linear, j_pitch = j_full[:3, :], j_full[4, :]
-    return np.vstack((j_linear, j_pitch))
+    # And the rotational jacobian for pitch (row 4) and optionally yaw (row 5)
+    j_linear = j_full[:3, :]
+    j_pitch = j_full[4, :]  # Rotation about Y (pitch)
+    
+    if include_yaw:
+        j_yaw = j_full[5, :]  # Rotation about Z (yaw)
+        return np.vstack((j_linear, j_pitch, j_yaw))
+    else:
+        return np.vstack((j_linear, j_pitch))
+
+
+def calculate_desired_yaw(current_pos, target_pos):
+    """
+    Calculate the yaw angle needed to point from current position toward target.
+    Returns angle in radians.
+    """
+    dx = target_pos[0] - current_pos[0]
+    dy = target_pos[1] - current_pos[1]
+    return np.arctan2(dy, dx)
 
 def publish_chair_markers(selected_chair_coords=None):
     pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=1, latch=True)
