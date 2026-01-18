@@ -31,10 +31,10 @@ def read_position_from_keyboard():
 
     target_x = grid_params['x_start'] + (x * grid_params['row_spacing'])
     target_y = grid_params['y_start'] + (y * grid_params['chair_spacing'])
-    if y > 4:
+    if y >= 4:
         target_y += grid_params['aisle_gap']
     
-    return (x, y), np.array([target_x, target_y, 1.0])
+    return (x, y), np.array([target_x + .25, target_y, 1.0])
 
 def load_urdf_model(model_path):
     urdf_path = os.path.join(os.path.dirname(__file__), model_path)

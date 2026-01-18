@@ -413,8 +413,9 @@
     <joint name="tool_tip_fixed" type="fixed">
         <parent link="ee_link"/>
         <child link="tool_tip"/>
-        <!-- Rotate so tool z-axis points in -Z world direction when arm is in home config -->
-        <origin xyz="0.03 0 0" rpy="0 1.5708 0"/>
+        <!-- When arm is horizontal, ee_link z-axis points UP (+Z world) -->
+        <!-- Rx(180°) = rpy="3.14159 0 0" flips z-axis from +Z to -Z (DOWN) -->
+        <origin xyz="0.03 0 0" rpy="3.14159 0 0"/>
     </joint>
 
     <link name="tool_tip">

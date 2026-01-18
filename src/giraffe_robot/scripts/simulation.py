@@ -1,7 +1,3 @@
-import sys
-# Adjust this path if needed, just like in the previous script
-sys.path.append('/opt/ros/noetic/lib/python3.8/site-packages')
-
 import numpy as np
 import pinocchio as pin
 
@@ -48,8 +44,8 @@ def calculate_robot_dynamics(model,
     # Dynamics (calculating torques)
     inv_m = np.linalg.inv(data.M)
     # inertia = (J _dot_ M^-1 _dot_ J^T)^-1
-    lambda_damping = 1e-6
-    inertia = np.linalg.inv(j_task @ inv_m @ j_task.T + lambda_damping * np.eye(4))
+    damping_matrix = 1e-4 * np.eye(4)
+    inertia = np.linalg.inv(j_task @ inv_m @ j_task.T + damping_matrix)
 
     # Calculating the forces
     f_task = inertia @ a_cmd
@@ -58,7 +54,9 @@ def calculate_robot_dynamics(model,
     j_bar = inv_m @ j_task.T @ inertia
     n = np.eye(model.nq) - j_bar @ j_task
 
-    tau_null = n @ (-k_null * (q - np.zeros(5)) - 2.0 * np.sqrt(k_null) * dq)
+    q_second = [.0, .0, .0, 1.57, 0]
+    q_error = q - q_second
+    tau_null = n @ (-k_null * q_error - 2.0 * np.sqrt(k_null) * dq)
 
     # Calculates Gravity + Coriolis effect
     nle = pin.nonLinearEffects(model, data, q, dq)

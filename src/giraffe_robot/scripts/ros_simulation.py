@@ -1,9 +1,5 @@
-import sys
+
 import argparse
-
-# Adjust this path if needed, just like in the previous script
-sys.path.append('/opt/ros/noetic/lib/python3.8/site-packages')
-
 import numpy as np
 
 import rospy
@@ -15,10 +11,6 @@ from utils import (load_urdf_model,
                    generate_trajectory_plan,
                    read_position_from_keyboard,
                    calculate_current_ee_position)
-
-rospy.init_node('giraffe_controller')
-pub = rospy.Publisher('joint_states', JointState, queue_size=10)
-rate = rospy.Rate(1000)
 
 
 def run_simulation(args):
@@ -32,7 +24,10 @@ def run_simulation(args):
     kp = 16 / settling_time ** 2
     kd = 2.0 * np.sqrt(kp)
     k_null = .1
-    pitch_desired = np.deg2rad(30)
+    
+    pitch_desired = np.sin(np.deg2rad(30))
+    position_fix = np.array([.25, 0, 0])
+
     q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
     dq = np.zeros(robot_model.nq)
 
@@ -49,6 +44,8 @@ def run_simulation(args):
             start_position = current_ee_position
             chair_coords, pos_desired = read_position_from_keyboard()
             publish_chair_markers(chair_coords)
+
+            pos_desired += position_fix
 
             start_time = current_time
             end_time = current_time + rospy.Duration.from_sec(settling_time)
@@ -77,7 +74,6 @@ def run_simulation(args):
 
         # Updating joint parameters
         q, dq = new_parameters[0], new_parameters[1]
-        q = np.clip(q, robot_model.lowerPositionLimit, robot_model.upperPositionLimit)
 
         publish_to_ros(pub=pub, q=q)
         rate.sleep()
@@ -102,6 +98,10 @@ def publish_to_ros(pub, q):
 
 
 if __name__ == '__main__':
+    rospy.init_node('giraffe_controller')
+    pub = rospy.Publisher('joint_states', JointState, queue_size=10)
+    rate = rospy.Rate(1000)
+
     parser = argparse.ArgumentParser(description="Giraffe Robot ROS Simulation")
     parser.add_argument('--urdf', type=str, default='../urdf/giraffe.urdf', help='URDF file path')
     parser.add_argument('--set_time', type=float, default=7.0, help='Set time')

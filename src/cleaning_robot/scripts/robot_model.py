@@ -346,24 +346,131 @@ class RobotModel:
             if q[i] < self.q_min[i] + margin or q[i] > self.q_max[i] - margin:
                 violations.append(i)
         return len(violations) == 0, violations
-    
-    def get_home_configuration(self):
+
+    @staticmethod
+    def get_home_configuration():
         """
         Get a reasonable home configuration for the robot.
-        Tool tip pointing down, arm extended forward.
+        Tool tip pointing down toward table (z-axis = [0,0,-1]).
+        
+        With URDF tool_tip rpy="3.14159 0 0" (Rx 180°), the tool z-axis 
+        points DOWN (-Z world) when the arm is extended horizontally.
         """
-        # Platform neutral, arm in a good starting pose
+        # All joints at zero = arm horizontal, tool pointing DOWN
+        # This is a good starting point for IK
         q_home = np.array([
-            0.0,    # platform_roll
-            0.0,    # platform_pitch
-            0.0,    # z1_joint1 (shoulder yaw)
-            0.5,    # z1_joint2 (shoulder pitch) - slightly forward
-            -1.0,   # z1_joint3 (elbow pitch) - bent
-            0.0,    # z1_joint4 (wrist yaw)
-            0.5,    # z1_joint5 (wrist pitch) - adjust for perpendicular
-            0.0     # z1_joint6 (wrist roll)
+            0.0,      # platform_roll
+            0.0,      # platform_pitch  
+            0.0,      # z1_joint1 (shoulder yaw) - forward
+            0.0,      # z1_joint2 (shoulder pitch) - horizontal
+            0.0,      # z1_joint3 (elbow pitch) - straight
+            0.0,      # z1_joint4 (wrist yaw)
+            0.0,      # z1_joint5 (wrist pitch)
+            0.0       # z1_joint6 (wrist roll)
         ])
         return q_home
+    
+    def compute_ik_for_pose(self, target_pos, target_rot, q_init=None, max_iter=200, 
+                             pos_tol=1e-3, rot_tol=0.05):
+        """
+        Iterative IK to find configuration reaching target pose (position + orientation).
+        Uses damped least squares.
+        
+        Args:
+            target_pos: (3,) target position
+            target_rot: (3,3) target rotation matrix
+            q_init: Initial guess (default: home)
+            max_iter: Maximum iterations
+            pos_tol: Position tolerance (m)
+            rot_tol: Orientation tolerance (rad)
+            
+        Returns:
+            q: Joint configuration
+            success: Whether IK converged
+        """
+        if q_init is None:
+            q = self.get_home_configuration()
+        else:
+            q = q_init.copy()
+        
+        alpha = 0.3  # Step size
+        damping = 0.05
+        
+        for i in range(max_iter):
+            pos, rot = self.get_tool_pose(q)
+            
+            # Position error
+            e_pos = target_pos - pos
+            
+            # Orientation error using log map
+            R_error = target_rot @ rot.T
+            e_rot = pin.log3(R_error)
+            
+            pos_err_norm = np.linalg.norm(e_pos)
+            rot_err_norm = np.linalg.norm(e_rot)
+            
+            if pos_err_norm < pos_tol and rot_err_norm < rot_tol:
+                return q, True
+            
+            # Full error vector
+            error = np.concatenate([e_pos, e_rot])
+            
+            # Get full Jacobian
+            J = self.get_jacobian(q)  # 6x8
+            
+            # Damped pseudoinverse
+            J_pinv = self.damped_pseudoinverse(J, damping)
+            
+            # Update
+            dq = alpha * J_pinv @ error
+            q = q + dq
+            q = self.clip_to_limits(q)
+        
+        # Return best result even if not fully converged
+        return q, False
+    
+    def compute_ik_for_position(self, target_pos, q_init=None, max_iter=100, tol=1e-4):
+        """
+        Simple iterative IK to find configuration reaching target position.
+        Uses damped least squares (position only, preserves orientation from init).
+        
+        Args:
+            target_pos: (3,) target position
+            q_init: Initial guess (default: home)
+            max_iter: Maximum iterations
+            tol: Position tolerance
+            
+        Returns:
+            q: Joint configuration
+            success: Whether IK converged
+        """
+        if q_init is None:
+            q = self.get_home_configuration()
+        else:
+            q = q_init.copy()
+        
+        alpha = 0.5  # Step size
+        damping = 0.1
+        
+        for i in range(max_iter):
+            pos, _ = self.get_tool_pose(q)
+            error = target_pos - pos
+            
+            if np.linalg.norm(error) < tol:
+                return q, True
+            
+            # Get position Jacobian
+            J = self.get_jacobian(q)[:3, :]  # 3x8
+            
+            # Damped pseudoinverse
+            J_pinv = self.damped_pseudoinverse(J, damping)
+            
+            # Update
+            dq = alpha * J_pinv @ error
+            q = q + dq
+            q = self.clip_to_limits(q)
+        
+        return q, False
 
 
 def test_robot_model():

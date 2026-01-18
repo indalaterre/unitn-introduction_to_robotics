@@ -336,11 +336,11 @@ def main():
                         help='Simulation duration (seconds)')
     parser.add_argument('--dt', type=float, default=0.001,
                         help='Time step (seconds)')
-    parser.add_argument('--radius', type=float, default=0.20,
+    parser.add_argument('--radius', type=float, default=0.15,
                         help='Circle radius (meters)')
-    parser.add_argument('--omega', type=float, default=0.4,
+    parser.add_argument('--omega', type=float, default=0.3,
                         help='Angular velocity (rad/s)')
-    parser.add_argument('--k_null', type=float, default=10.0,
+    parser.add_argument('--k_null', type=float, default=5.0,
                         help='Null-space gain')
     parser.add_argument('--output', type=str, default='simulation_data',
                         help='Output filename prefix')
@@ -356,27 +356,70 @@ def main():
     
     # Load robot model
     robot = RobotModel()
+
+    q_seed = np.array([
+        0.0, 0.0,        # Platform (keep zero)
+        0.0,             # z1_joint1 (Base Yaw)
+        0.5,             # z1_joint2 (Shoulder Pitch) - Lift arm up
+        -1.2,            # z1_joint3 (Elbow Pitch) - Bend elbow down
+        0.0,             # z1_joint4 (Wrist Yaw)
+        0.7,             # z1_joint5 (Wrist Pitch) - Compensate to point tool down
+        0.0              # z1_joint6 (Wrist Roll)
+    ])
     
-    # Initial configuration
-    q_init = robot.get_home_configuration()
+    # Get home configuration and check tool position/orientation
+    q_home = robot.get_home_configuration()
+    pos_home, rot_home = robot.get_tool_pose(q_home)
+    print(f"\nHome config tool position: {pos_home}")
+    print(f"Home config tool z-axis: {rot_home[:, 2]}")
+    
+    # Desired orientation: tool z-axis pointing DOWN (-Z world)
+    # R_desired rotates so tool z points in -Z direction
+    R_desired = np.array([
+        [1.0,  0.0,  0.0],
+        [0.0, -1.0,  0.0],
+        [0.0,  0.0, -1.0]
+    ])
+    
+    # Set trajectory center based on reachable workspace
+    # The arm at home extends ~0.55m in X, so center circle closer to base
+    # Use a center that's reachable with the arm bent
+    circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
+    
+    # Circle start point
+    circle_start = np.array([circle_center[0] + args.radius, circle_center[1], circle_center[2]])
+    print(f"\nCircle center: {circle_center}")
+    print(f"Circle start point: {circle_start}")
+    
+    # Use full pose IK to find configuration with correct position AND orientation
+    q_init, ik_success = robot.compute_ik_for_pose(circle_start, R_desired, q_init=q_seed)
+    if ik_success:
+        print(f"IK converged to reach circle start with correct orientation")
+    else:
+        print(f"IK did not fully converge, using best estimate")
+    
+    pos_init, rot_init = robot.get_tool_pose(q_init)
+    print(f"Initial config tool position: {pos_init}")
+    print(f"Initial config tool z-axis: {rot_init[:, 2]}")
+    print(f"Initial position error: {np.linalg.norm(circle_start - pos_init):.4f}m")
     
     # Trajectory parameters
     trajectory_params = {
-        'circle_center': [0.35, 0.0, 0.05],
+        'circle_center': circle_center,
         'circle_radius': args.radius,
-        'circle_height': 0.05,
+        'circle_height': 0.15,  # Fixed height above table
         'circle_omega': args.omega,
-        'approach_duration': 3.0
+        'approach_duration': 3.0  # Allow time for approach
     }
     
-    # Controller parameters
+    # Controller parameters - high gains for accurate tracking
     controller_params = {
-        'Kp_pos': 200.0,
-        'Kd_pos': 40.0,
-        'Kp_rot': 150.0,
-        'Kd_rot': 30.0,
-        'k_null': args.k_null,
-        'damping': 1e-3
+        'Kp_pos': 800.0,
+        'Kd_pos': 80.0,
+        'Kp_rot': 600.0,
+        'Kd_rot': 60.0,
+        'k_null': min(args.k_null, 5.0),  # Limit null-space gain to prioritize tracking
+        'damping': 0.05  # Higher damping for stability near singularities
     }
     
     if args.mode == 'compare':

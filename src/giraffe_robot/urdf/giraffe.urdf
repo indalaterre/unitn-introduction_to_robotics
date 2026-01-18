@@ -37,7 +37,7 @@
         <child  link="link1_shoulder" />
         <origin xyz="0 0 0" rpy="0 0 0" />
         <axis xyz="0 0 1" />
-        <limit lower="-3.14" upper="3.14" effort="100" velocity="1.0"/>
+        <limit lower="-3.14" upper="3.14" effort="200" velocity="2.0"/>
     </joint>
 
     <link name="link1_shoulder">
@@ -59,7 +59,7 @@
         <child link="link2_tube_outer"/>
         <origin xyz="0 0 0" rpy="0 1.57 0"/>
         <axis xyz="0 1 0"/>
-        <limit lower="-1.57" upper="0.0" effort="100" velocity="1.0"/>
+        <limit lower="-1.57" upper="0.0" effort="200" velocity="2.0"/>
     </joint>
 
     <link name="link2_tube_outer">
@@ -81,7 +81,7 @@
         <child link="link3_tube_inner"/>
         <origin xyz="0 0 0.5" rpy="0 0 0"/>
         <axis xyz="0 0 1"/>
-        <limit lower="0.0" upper="7.0" effort="200" velocity="2"/>
+        <limit lower="0.0" upper="7.0" effort="400" velocity="1"/>
     </joint>
 
     <link name="link3_tube_inner">
@@ -136,16 +136,31 @@
             </geometry>
             <material name="grey"/>
         </visual>
-        <visual>
-            <origin xyz="0 0 0.1" rpy="0.707 0 0"/> 
-            <geometry>
-                <mesh filename="package://giraffe_robot/models/microphone.stl" scale="0.001 0.001 0.001"/>
-            </geometry>
-            <material name="blue"/>
-        </visual>
         <inertial>
             <mass value="0.2"/>
             <inertia ixx="0.001" ixy="0" ixz="0" iyy="0.001" iyz="0" izz="0.001"/>
+        </inertial>
+    </link>
+
+    <joint name="joint_mic_tip" type="fixed">
+        <parent link="end_effector"/>
+        <child  link="mic_tip"/>
+        <!-- end_effector cylinder length is 0.1 and visual is centered at z=0.05,
+             so the "tip" is at z=0.1 in the end_effector frame -->
+        <origin xyz="0 0 0.10" rpy="0 0 0"/>
+    </joint>
+
+    <link name="mic_tip">
+        <visual>
+            <origin xyz="0 0 0" rpy="0 0 0"/>
+            <geometry>
+                <sphere radius="0.015"/>
+            </geometry>
+            <material name="red"/>
+        </visual>
+        <inertial>
+            <mass value="0.01"/>
+            <inertia ixx="1e-5" ixy="0" ixz="0" iyy="1e-5" iyz="0" izz="1e-5"/>
         </inertial>
     </link>
 </robot> 

@@ -70,112 +70,115 @@ class TaskSpaceController:
         self.last_error_rot = np.zeros(3)
         self.last_manipulability = 0.0
         self.last_tau = np.zeros(self.robot.nq)
+
+        self.q_posture = np.array([
+            0.0, 0.0,        # Platform
+            0.0,             # Base Yaw
+            0.5,             # Shoulder Pitch (Up)
+            -1.2,            # Elbow Pitch (Bent)
+            0.0,             # Wrist Yaw
+            0.7,             # Wrist Pitch
+            0.0              # Wrist Roll
+        ])
+        self.kp_posture = 100
+        self.kd_posture = 10
         
         print(f"[Controller] Initialized:")
         print(f"  Kp_pos: {Kp_pos}, Kd_pos: {Kd_pos}")
         print(f"  Kp_rot: {Kp_rot}, Kd_rot: {Kd_rot}")
         print(f"  k_null: {k_null}")
         print(f"  Manipulability optimization: {use_manipulability}")
+
+        # --- DEBUG PRINT TO VERIFY RELOAD ---
+        print(f"[Controller] RE-INITIALIZED with CONSTANT damping: {damping}")
+
+        self.print_timer = 0
     
     def compute_control(self, q, dq, pose_ref, twist_ref, accel_ref):
-        """
-        Compute control torques using task-space inverse dynamics.
-        
-        Args:
-            q: Current joint positions (8,)
-            dq: Current joint velocities (8,)
-            pose_ref: Reference SE3 pose
-            twist_ref: Reference twist (6,)
-            accel_ref: Reference acceleration (6,)
-            
-        Returns:
-            tau: Joint torques (8,)
-            info: Dictionary with debug information
-        """
         # Update robot kinematics
         self.robot.update_kinematics(q, dq)
-        
-        # Get current pose
         pose_current = self.robot.forward_kinematics(q)
-        
-        # Compute pose errors
         e_pos, e_rot = compute_pose_error(pose_current, pose_ref)
         error = np.concatenate([e_pos, e_rot])
-        
-        # Get Jacobian
         J = self.robot.get_jacobian(q)
+
+        # <--- FIX 2: CALCULATE DAMPING FIRST (Before Primary Task)
+        # Previously, you calculated this too late. Now we do it first.
+        manip = self.robot.compute_manipulability(q, use_position_only=True)
+        current_damping = self.damping
         
-        # Current end-effector velocity
+        # Dynamic Damping: If manip < 0.05, increase damping to prevent explosion
+        if manip < 0.05:
+            current_damping = 0.01 + (0.05 - manip) * 20.0
+            
+        # Create the SAFE Pseudoinverse using the calculated damping
+        J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
+
+        # --- PRIMARY TASK (Cleaning) ---
         xdot = J @ dq
-        
-        # Velocity error
         xdot_error = twist_ref - xdot
-        
-        # Desired task acceleration with PD feedback
-        # xddot* = xddot_ref + Kd*(xdot_ref - xdot) + Kp*e
         xddot_star = accel_ref + self.Kd @ xdot_error + self.Kp @ error
-        
-        # Get Jdot * qdot
         Jdot_qdot = self.robot.get_jacobian_derivative(q, dq)
         
-        # Damped pseudoinverse
-        J_pinv = self.robot.damped_pseudoinverse(J, self.damping)
-        
-        # Primary task acceleration
-        # qddot_task = J# * (xddot* - Jdot*qdot)
+        # Now the primary task uses the SAFE J_pinv
         qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
         
-        # Null-space secondary task (manipulability maximization)
+        # --- FIX 3: UNIFIED SECONDARY TASK (Posture + Manipulability) ---
         qddot_null = np.zeros(self.robot.nq)
-        manipulability = 0.0
-        grad_w = np.zeros(self.robot.nq)
         
-        if self.use_manipulability and self.k_null > 0:
-            # Compute manipulability and its gradient
-            manipulability = self.robot.compute_manipulability(q, use_position_only=True)
-            grad_w = self.robot.compute_manipulability_gradient(q, use_position_only=True)
+        if self.use_manipulability:
+            # Step A: Calculate Posture Correction (Pull towards Elbow-Up)
+            # q_accel = Kp*(q_des - q) - Kd*dq
+            qddot_secondary = self.kp_posture * (self.q_posture - q) - self.kd_posture * dq
             
-            # Null-space projector
+            # Step B: Add Manipulability Optimization (Optional)
+            # Only add this if we are safe (manip > 0.04) and gain > 0
+            if self.k_null > 0 and manip > 0.04:
+                try:
+                    grad_w = self.robot.compute_manipulability_gradient(q, use_position_only=True)
+                    qddot_secondary += self.k_null * grad_w
+                except:
+                    pass
+
+            # Step C: Project EVERYTHING into Null Space at once
             N = self.robot.null_space_projector(J, self.damping)
-            
-            # Null-space acceleration (gradient ascent)
-            qddot_null = self.k_null * N @ grad_w
+            qddot_null_raw = N @ qddot_secondary
+
+            # Step D: Safety Clamp
+            max_null_ac = .5
+            norm_null = np.linalg.norm(qddot_null_raw)
+            if norm_null > max_null_ac:
+                qddot_null = qddot_null_raw * (max_null_ac / norm_null)
+            else:
+                qddot_null = qddot_null_raw
         
-        # Total joint acceleration
+        # Summation
         qddot = qddot_task + qddot_null
-        
-        # Saturate joint acceleration
         qddot = np.clip(qddot, -self.ddq_max, self.ddq_max)
         
-        # Get dynamics matrices
+        # Dynamics
         M = self.robot.get_mass_matrix(q)
         h = self.robot.get_bias_forces(q, dq)
         
-        # Compute torques: tau = M*qddot + h
-        tau = M @ qddot + h
-        
-        # Saturate torques
+        if np.any(np.isnan(M)) or np.any(np.isnan(h)):
+            tau = np.zeros(self.robot.nq)
+        else:
+            tau = M @ qddot + h
+            
         tau = self.robot.saturate_torques(tau)
         
-        # Check for NaN
-        if np.any(np.isnan(tau)):
-            print("[Controller] WARNING: NaN detected in torques!")
-            tau = np.zeros(self.robot.nq)
-        
-        # Store for logging
+        # Store Info
         self.last_error_pos = e_pos
         self.last_error_rot = e_rot
-        self.last_manipulability = manipulability
+        self.last_manipulability = manip
         self.last_tau = tau
         
-        # Debug info
         info = {
             'error_pos': e_pos.copy(),
             'error_rot': e_rot.copy(),
             'error_pos_norm': np.linalg.norm(e_pos),
             'error_rot_norm': np.linalg.norm(e_rot),
-            'manipulability': manipulability,
-            'grad_manipulability': grad_w.copy(),
+            'manipulability': manip,
             'qddot_task': qddot_task.copy(),
             'qddot_null': qddot_null.copy(),
             'qddot': qddot.copy(),
@@ -187,7 +190,7 @@ class TaskSpaceController:
         }
         
         return tau, info
-    
+
     def set_gains(self, Kp_pos=None, Kd_pos=None, Kp_rot=None, Kd_rot=None, k_null=None):
         """Update controller gains."""
         if Kp_pos is not None:
