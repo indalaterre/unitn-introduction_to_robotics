@@ -65,17 +65,28 @@ def calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=False):
         return np.vstack((j_linear, j_pitch))
 
 
-def calculate_desired_yaw(current_pos, target_pos):
+def calculate_desired_yaw(base_pos, target_pos):
     """
-    Calculate the yaw angle needed to point the microphone toward the target.
-    Returns angle in radians.
+    Calculate the yaw angle to point the microphone toward the target chair.
     
-    The microphone tip should face the person in the chair.
-    The arm extends from the ceiling-mounted base toward the target.
+    The robot base is at (0, 0) in the XY plane (ceiling mounted).
+    The arm extends outward, and the mic tip should face the chair.
+    
+    We calculate the angle FROM the base TO the target, then add pi
+    so the mic tip (which points back toward base) faces the chair.
     """
-    dx = target_pos[0] - current_pos[0]
-    dy = target_pos[1] - current_pos[1]
-    return np.arctan2(dy, dx)
+    # Direction from base to target
+    dx = target_pos[0] - base_pos[0]
+    dy = target_pos[1] - base_pos[1]
+    
+    # Avoid singularity when target is directly below base
+    if abs(dx) < 0.01 and abs(dy) < 0.01:
+        return 0.0
+    
+    # Yaw to point arm toward target, then flip for mic tip
+    yaw = np.arctan2(dy, dx) + np.pi
+    # Wrap to [-pi, pi]
+    return np.arctan2(np.sin(yaw), np.cos(yaw))
 
 def publish_chair_markers(selected_chair_coords=None):
     pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=1, latch=True)

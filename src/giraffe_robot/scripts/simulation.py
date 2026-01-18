@@ -1,7 +1,7 @@
 import numpy as np
 import pinocchio as pin
 
-from utils import load_urdf_model, calculate_task_jacobian, calculate_desired_yaw
+from utils import load_urdf_model, calculate_task_jacobian
 
 def calculate_robot_dynamics(model,
                              data,
@@ -25,27 +25,17 @@ def calculate_robot_dynamics(model,
 
     # The sum of q2+q4 gives the end effector pitch
     end_pitch = q[1] + q[3]
-    
-    # Current yaw is just q[0] (joint1_pan)
-    current_yaw = q[0]
-    
-    # Desired yaw: point toward target position
-    yaw_d = calculate_desired_yaw(current_position, pos_d)
 
-    # Use 5x5 task Jacobian (position + pitch + yaw)
-    j_task = calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=True)
+    # 4D Task Jacobian (3 position + 1 pitch) - as per assignment
+    j_task = calculate_task_jacobian(model, data, q, ee_link_id)
 
     position_error = pos_d - current_position
-    pitch_error = pitch_d - end_pitch
-    yaw_error = yaw_d - current_yaw
-    
-    # Wrap yaw error to [-pi, pi]
-    yaw_error = np.arctan2(np.sin(yaw_error), np.cos(yaw_error))
+    rotation_error = pitch_d - end_pitch
 
-    error = np.hstack((position_error, pitch_error, yaw_error))
+    error = np.hstack((position_error, rotation_error))
 
-    v_task = np.hstack((vel_d, 0.0, 0.0))
-    a_task = np.hstack((acc_d, 0.0, 0.0))
+    v_task = np.hstack((vel_d, 0.0))
+    a_task = np.hstack((acc_d, 0.0))
 
     d_error = v_task - np.dot(j_task, dq)
 
@@ -55,19 +45,20 @@ def calculate_robot_dynamics(model,
     # Dynamics (calculating torques)
     inv_m = np.linalg.inv(data.M)
     # inertia = (J _dot_ M^-1 _dot_ J^T)^-1
-    # Task is now 5D (3 position + 1 pitch + 1 yaw)
-    damping_matrix = 1e-4 * np.eye(5)
+    damping_matrix = 1e-4 * np.eye(4)
     inertia = np.linalg.inv(j_task @ inv_m @ j_task.T + damping_matrix)
 
     # Calculating the forces
     f_task = inertia @ a_cmd
     tau_task = j_task.T @ f_task
 
+    # Null-space secondary task: minimize distance to default configuration q0
     j_bar = inv_m @ j_task.T @ inertia
     n = np.eye(model.nq) - j_bar @ j_task
 
-    q_second = [.0, .0, .0, 1.57, 0]
-    q_error = q - q_second
+    # Default configuration q0 (comfortable posture)
+    q_0 = np.array([0.0, 0.0, 0.0, 1.57, 0.0])
+    q_error = q - q_0
     tau_null = n @ (-k_null * q_error - 2.0 * np.sqrt(k_null) * dq)
 
     # Calculates Gravity + Coriolis effect
@@ -81,7 +72,7 @@ def calculate_robot_dynamics(model,
     dq += ddq * dt
     q  += dq * dt
 
-    return (position_error, pitch_error, yaw_error), (q, dq), (current_position, end_pitch, current_yaw)
+    return (position_error, rotation_error), (q, dq), (current_position, end_pitch)
     
 
 def simulate_robot_dynamics(model,
@@ -102,8 +93,7 @@ def simulate_robot_dynamics(model,
         'time': [],
         'joints': [],
         'pos_error': [],
-        'pitch_error': [],
-        'yaw_error': []
+        'pitch_error': []
     }
 
     q = initial_q.copy()
@@ -134,10 +124,9 @@ def simulate_robot_dynamics(model,
         joint_history['joints'].append(new_parameters[0].copy())
         joint_history['pos_error'].append(np.linalg.norm(error[0]))
         joint_history['pitch_error'].append(error[1])
-        joint_history['yaw_error'].append(error[2])
 
         if i % 500 == 0:
-            print(f'Time: {i * dt:.2f}s | PosErr: {np.linalg.norm(error[0]):.4f} | PitchErr: {error[1]:.4f} | YawErr: {error[2]:.4f}')
+            print(f'Time: {i * dt:.2f}s | PosError: {np.linalg.norm(error[0]):.4f} | PitchError: {error[1]:.4f}')
 
     return new_positions[0], new_positions[1], joint_history
 

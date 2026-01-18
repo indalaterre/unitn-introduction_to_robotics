@@ -81,7 +81,7 @@ def run_simulation(args):
         publish_to_ros(pub=pub, q=q)
         rate.sleep()
 
-        # new_positions now contains (position, pitch, yaw)
+        # new_positions contains (position, pitch)
         current_ee_position = new_positions[0]
 
         time_completed = current_time >= (start_time + rospy.Duration.from_sec(settling_time))
