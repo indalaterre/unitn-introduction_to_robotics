@@ -25,9 +25,10 @@ def run_simulation(args):
     kd = 2.0 * np.sqrt(kp)
     k_null = .1
     
-    # Desired pitch: 30° downward from horizontal (negative because pointing down)
-    # The end-effector pitch = q[1] + q[3], and we want it tilted 30° down
-    pitch_desired = np.deg2rad(-30)
+    # Desired pitch: +30° means the mic body tilts 30° UP from horizontal
+    # The mic tip is at the target position, body extends back toward ceiling
+    # This matches the diagram: mic head in front of person, body coming from above
+    pitch_desired = np.deg2rad(30)
     position_fix = np.array([.25, 0, 0])
 
     q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])

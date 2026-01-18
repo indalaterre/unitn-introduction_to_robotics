@@ -160,8 +160,9 @@ def run_simulation():
 
     # Desired state for the end-effector
     pos_desired = np.array([1.0, 2.0, 1.0])
-    # Pitch: -30° means microphone tilted 30° downward toward audience
-    pitch_desired = np.deg2rad(-30)
+    # Pitch: +30° means mic body tilts 30° UP from horizontal
+    # Mic head in front of person, body extends back toward ceiling
+    pitch_desired = np.deg2rad(30)
 
     return simulate_robot_dynamics(model=robot_model,
                                    data=robot_data,

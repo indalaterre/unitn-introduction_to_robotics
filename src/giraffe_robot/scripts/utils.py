@@ -67,8 +67,11 @@ def calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=False):
 
 def calculate_desired_yaw(current_pos, target_pos):
     """
-    Calculate the yaw angle needed to point from current position toward target.
+    Calculate the yaw angle needed to point the microphone toward the target.
     Returns angle in radians.
+    
+    The microphone tip should face the person in the chair.
+    The arm extends from the ceiling-mounted base toward the target.
     """
     dx = target_pos[0] - current_pos[0]
     dy = target_pos[1] - current_pos[1]
