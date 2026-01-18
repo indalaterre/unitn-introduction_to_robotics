@@ -360,10 +360,10 @@ def main():
     q_seed = np.array([
         0.0, 0.0,        # Platform (keep zero)
         0.0,             # z1_joint1 (Base Yaw)
-        0.5,             # z1_joint2 (Shoulder Pitch) - Lift arm up
-        -1.2,            # z1_joint3 (Elbow Pitch) - Bend elbow down
+        -0.5,            # z1_joint2 (Shoulder Pitch) - Tilt arm down/forward
+        1.2,             # z1_joint3 (Elbow Pitch) - Bend elbow FORWARD (away from base)
         0.0,             # z1_joint4 (Wrist Yaw)
-        0.7,             # z1_joint5 (Wrist Pitch) - Compensate to point tool down
+        -0.7,            # z1_joint5 (Wrist Pitch) - Compensate to keep tool down
         0.0              # z1_joint6 (Wrist Roll)
     ])
     

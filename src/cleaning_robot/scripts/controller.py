@@ -74,10 +74,10 @@ class TaskSpaceController:
         self.q_posture = np.array([
             0.0, 0.0,        # Platform
             0.0,             # Base Yaw
-            0.5,             # Shoulder Pitch (Up)
-            -1.2,            # Elbow Pitch (Bent)
+            -0.5,            # Shoulder Pitch (tilt arm down/forward)
+            1.2,             # Elbow Pitch (bend FORWARD, away from base)
             0.0,             # Wrist Yaw
-            0.7,             # Wrist Pitch
+            -0.7,            # Wrist Pitch (compensate to keep tool down)
             0.0              # Wrist Roll
         ])
         self.kp_posture = 100
@@ -141,11 +141,11 @@ class TaskSpaceController:
                     pass
 
             # Step C: Project EVERYTHING into Null Space at once
-            N = self.robot.null_space_projector(J, self.damping)
+            N = self.robot.null_space_projector(J, current_damping)  # Use same damping as pseudoinverse
             qddot_null_raw = N @ qddot_secondary
 
             # Step D: Safety Clamp
-            max_null_ac = .5
+            max_null_ac = 10.0  # Allow meaningful posture correction
             norm_null = np.linalg.norm(qddot_null_raw)
             if norm_null > max_null_ac:
                 qddot_null = qddot_null_raw * (max_null_ac / norm_null)
