@@ -10,7 +10,8 @@ from utils import (load_urdf_model,
                    publish_chair_markers,
                    generate_trajectory_plan,
                    read_position_from_keyboard,
-                   calculate_current_ee_position)
+                   calculate_current_ee_position,
+                   calculate_desired_yaw)
 
 
 def run_simulation(args):
@@ -23,12 +24,11 @@ def run_simulation(args):
     # Settling time is approx 4 / sqrt(kp) ==> kp = 16 / settling_time ** 2
     kp = 16 / settling_time ** 2
     kd = 2.0 * np.sqrt(kp)
-    k_null = .1
+    k_null = 1.0  # Increased for stronger null-space control of mic orientation
     
-    # Desired pitch: +30° means the mic body tilts 30° UP from horizontal
-    # The mic tip is at the target position, body extends back toward ceiling
-    # This matches the diagram: mic head in front of person, body coming from above
-    pitch_desired = np.deg2rad(30)
+    # Desired pitch: -30° means the mic tilts 30° DOWN from horizontal
+    # Robot is on ceiling, mic should point down toward person's mouth
+    pitch_desired = np.deg2rad(-30)
     position_fix = np.array([.25, 0, 0])
 
     q = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
@@ -49,6 +49,10 @@ def run_simulation(args):
             publish_chair_markers(chair_coords)
 
             pos_desired += position_fix
+            
+            # Calculate yaw to point microphone toward the chair
+            base_pos = np.array([0.0, 0.0, 4.0])  # Robot base at ceiling
+            yaw_desired = calculate_desired_yaw(base_pos, pos_desired)
 
             start_time = current_time
             end_time = current_time + rospy.Duration.from_sec(settling_time)
@@ -68,6 +72,7 @@ def run_simulation(args):
                                                                         vel_d=vel_d,
                                                                         acc_d=acc_d,
                                                                         pitch_d=pitch_desired,
+                                                                        yaw_d=yaw_desired,
                                                                         dt=dt,
                                                                         q=q,
                                                                         dq=dq,
@@ -95,7 +100,7 @@ def publish_to_ros(pub, q):
     msg = JointState()
     msg.header.stamp = rospy.Time.now()
 
-    msg.name = ['joint1_pan', 'joint2_tilt', 'joint3_prismatic', 'joint4_pitch', 'joint5_roll']
+    msg.name = ['joint1_pan', 'joint2_tilt', 'joint3_prismatic', 'joint4_pitch', 'joint5_yaw']
     msg.position = q.tolist()
 
     pub.publish(msg)

@@ -80,8 +80,8 @@ class TaskSpaceController:
             -0.7,            # Wrist Pitch (compensate to keep tool down)
             0.0              # Wrist Roll
         ])
-        self.kp_posture = 100
-        self.kd_posture = 10
+        self.kp_posture = 400
+        self.kd_posture = 40
         
         print(f"[Controller] Initialized:")
         print(f"  Kp_pos: {Kp_pos}, Kd_pos: {Kd_pos}")
@@ -107,9 +107,10 @@ class TaskSpaceController:
         manip = self.robot.compute_manipulability(q, use_position_only=True)
         current_damping = self.damping
         
-        # Dynamic Damping: If manip < 0.05, increase damping to prevent explosion
-        if manip < 0.05:
-            current_damping = 0.01 + (0.05 - manip) * 20.0
+        # Dynamic Damping: Increase damping progressively as manipulability drops
+        if manip < 0.06:
+            # More aggressive damping increase starting earlier
+            current_damping = self.damping + (0.06 - manip) * 50.0
             
         # Create the SAFE Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
@@ -132,8 +133,8 @@ class TaskSpaceController:
             qddot_secondary = self.kp_posture * (self.q_posture - q) - self.kd_posture * dq
             
             # Step B: Add Manipulability Optimization (Optional)
-            # Only add this if we are safe (manip > 0.04) and gain > 0
-            if self.k_null > 0 and manip > 0.04:
+            # Only add this if we are safe (manip > 0.055) and gain > 0
+            if self.k_null > 0 and manip > 0.055:
                 try:
                     grad_w = self.robot.compute_manipulability_gradient(q, use_position_only=True)
                     qddot_secondary += self.k_null * grad_w

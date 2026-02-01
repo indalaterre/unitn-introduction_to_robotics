@@ -54,39 +54,29 @@ def calculate_task_jacobian(model, data, q, ee_link_id, include_yaw=False):
                                       ee_link_id, 
                                       pin.ReferenceFrame.LOCAL_WORLD_ALIGNED)
     # We need the linear jacobian (first 3 rows)
-    # And the rotational jacobian for pitch (row 4) and optionally yaw (row 5)
     j_linear = j_full[:3, :]
-    j_pitch = j_full[4, :]  # Rotation about Y (pitch)
+    # Analytic pitch Jacobian: pitch = -(1.57 + q[1] + q[3])
+    # Derivative: d(pitch)/dq = -[0, 1, 0, 1, 0]
+    j_pitch = np.array([[0.0, -1.0, 0.0, -1.0, 0.0]])
     
-    if include_yaw:
-        j_yaw = j_full[5, :]  # Rotation about Z (yaw)
-        return np.vstack((j_linear, j_pitch, j_yaw))
-    else:
-        return np.vstack((j_linear, j_pitch))
+    return np.vstack((j_linear, j_pitch))
 
 
 def calculate_desired_yaw(base_pos, target_pos):
     """
-    Calculate the yaw angle to point the microphone toward the target chair.
+    Calculate the yaw angle for joint5 (end-effector yaw) to point mic toward chair.
     
-    The robot base is at (0, 0) in the XY plane (ceiling mounted).
-    The arm extends outward, and the mic tip should face the chair.
+    Since joint5 is now a Z-axis rotation at the end-effector, and the arm
+    extends toward the target via q[0], we need q[4] to rotate the mic
+    to face the person sitting at the chair.
     
-    We calculate the angle FROM the base TO the target, then add pi
-    so the mic tip (which points back toward base) faces the chair.
+    The mic cylinder extends along local Z. After the arm reaches the target,
+    q[4] rotates the mic around its axis. We want it to face the person.
     """
-    # Direction from base to target
-    dx = target_pos[0] - base_pos[0]
-    dy = target_pos[1] - base_pos[1]
-    
-    # Avoid singularity when target is directly below base
-    if abs(dx) < 0.01 and abs(dy) < 0.01:
-        return 0.0
-    
-    # Yaw to point arm toward target, then flip for mic tip
-    yaw = np.arctan2(dy, dx) + np.pi
-    # Wrap to [-pi, pi]
-    return np.arctan2(np.sin(yaw), np.cos(yaw))
+    # For a ceiling-mounted robot reaching down to a chair,
+    # the mic should point toward the person (roughly toward the base/origin)
+    # Since the arm extends outward, q[4] = pi rotates mic to face inward
+    return np.pi
 
 def publish_chair_markers(selected_chair_coords=None):
     pub = rospy.Publisher('visualization_marker_array', MarkerArray, queue_size=1, latch=True)

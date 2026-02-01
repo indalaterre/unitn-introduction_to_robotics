@@ -10,6 +10,7 @@ def calculate_robot_dynamics(model,
                              vel_d,
                              acc_d,
                              pitch_d,
+                             yaw_d,
                              dt,
                              q,
                              dq,
@@ -23,8 +24,10 @@ def calculate_robot_dynamics(model,
 
     current_position = data.oMf[ee_link_id].translation
 
-    # The sum of q2+q4 gives the end effector pitch
-    end_pitch = q[1] + q[3]
+    # End effector pitch in world frame: joint2 has 90° offset (rpy="0 1.57 0")
+    # Negative sign needed: mic should point toward person (down and forward), not away
+    # For 30° pitch from horizontal pointing toward person, we need negative pitch
+    end_pitch = -(q[1] + q[3])
 
     # 4D Task Jacobian (3 position + 1 pitch) - as per assignment
     j_task = calculate_task_jacobian(model, data, q, ee_link_id)
@@ -56,8 +59,9 @@ def calculate_robot_dynamics(model,
     j_bar = inv_m @ j_task.T @ inertia
     n = np.eye(model.nq) - j_bar @ j_task
 
-    # Default configuration q0 (comfortable posture)
-    q_0 = np.array([0.0, 0.0, 0.0, 1.57, 0.0])
+    # Default configuration q0: use q[4] (end-effector yaw) to point mic toward chair
+    # yaw_d is the desired yaw angle for the microphone to face the target
+    q_0 = np.array([0.0, -0.785, 0.0, 0.0, yaw_d])
     q_error = q - q_0
     tau_null = n @ (-k_null * q_error - 2.0 * np.sqrt(k_null) * dq)
 
@@ -82,10 +86,10 @@ def simulate_robot_dynamics(model,
                             initial_dq,
                             pos_d,
                             pitch_d,
-
                             kp,
                             kd,
                             k_null,
+                            yaw_d=0.0,
                             dt=0.001,
                             num_steps=5):
     
@@ -108,6 +112,7 @@ def simulate_robot_dynamics(model,
                                                                         vel_d=np.zeros(3),
                                                                         acc_d=np.zeros(3),
                                                                         pitch_d=pitch_d,
+                                                                        yaw_d=yaw_d,
                                                                         dt=dt,
                                                                         q=q,
                                                                         dq=dq,
@@ -149,9 +154,8 @@ def run_simulation():
 
     # Desired state for the end-effector
     pos_desired = np.array([1.0, 2.0, 1.0])
-    # Pitch: +30° means mic body tilts 30° UP from horizontal
-    # Mic head in front of person, body extends back toward ceiling
-    pitch_desired = np.deg2rad(30)
+    # Pitch: -30° means mic tilts 30° DOWN from horizontal toward person
+    pitch_desired = np.deg2rad(-30)
 
     return simulate_robot_dynamics(model=robot_model,
                                    data=robot_data,

@@ -120,17 +120,17 @@
         </inertial>
     </link>
 
-    <joint name="joint5_roll" type="revolute">
+    <joint name="joint5_yaw" type="revolute">
         <parent link="link4_wrist"/>
         <child link="end_effector"/>
-        <origin xyz="0 0 0.2" rpy="0 0 0"/>
-        <axis xyz="1 0 0"/>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <axis xyz="0 0 1"/>
         <limit lower="-3.14" upper="3.14" effort="50" velocity="2.0"/>
     </joint>
 
     <link name="end_effector">
         <visual>
-            <origin xyz="0 0 0.05" rpy="0 0 0"/>
+            <origin xyz="-0.05 0 .2" rpy="0 -1.57 0"/>
             <geometry>
                 <cylinder radius="0.01" length="0.1"/>
             </geometry>
@@ -145,9 +145,8 @@
     <joint name="joint_mic_tip" type="fixed">
         <parent link="end_effector"/>
         <child  link="mic_tip"/>
-        <!-- end_effector cylinder length is 0.1 and visual is centered at z=0.05,
-             so the "tip" is at z=0.1 in the end_effector frame -->
-        <origin xyz="0 0 0.10" rpy="0 0 0"/>
+        <!-- mic tip at end of microphone cylinder (rotated 90deg, extends along -X) -->
+        <origin xyz="-0.10 0 0.2" rpy="0 0 0"/>
     </joint>
 
     <link name="mic_tip">

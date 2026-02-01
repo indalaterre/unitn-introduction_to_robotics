@@ -336,7 +336,7 @@ def main():
                         help='Simulation duration (seconds)')
     parser.add_argument('--dt', type=float, default=0.001,
                         help='Time step (seconds)')
-    parser.add_argument('--radius', type=float, default=0.15,
+    parser.add_argument('--radius', type=float, default=0.12,
                         help='Circle radius (meters)')
     parser.add_argument('--omega', type=float, default=0.3,
                         help='Angular velocity (rad/s)')
@@ -418,8 +418,8 @@ def main():
         'Kd_pos': 80.0,
         'Kp_rot': 600.0,
         'Kd_rot': 60.0,
-        'k_null': min(args.k_null, 5.0),  # Limit null-space gain to prioritize tracking
-        'damping': 0.05  # Higher damping for stability near singularities
+        'k_null': min(args.k_null, 2.0),  # Lower gain prioritizes tracking over manipulability
+        'damping': 0.1  # Much higher damping to prevent singularity issues
     }
     
     if args.mode == 'compare':

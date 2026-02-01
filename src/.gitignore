@@ -11,7 +11,3 @@
 # Ignore NumPy archive files
 *.npz
 
-# Ignore catkin_tools workspace folder
-.catkin_tools/
-
-
