@@ -357,9 +357,11 @@ def main():
     # Load robot model
     robot = RobotModel()
 
+    # Position robot on the FARTHEST LEFT side to demonstrate approach phase
+    # The robot will start with arm pointing left (positive Y direction)
     q_seed = np.array([
         0.0, 0.0,        # Platform (keep zero)
-        0.0,             # z1_joint1 (Base Yaw)
+        1.57,            # z1_joint1 (Base Yaw) - Rotate 90° left (positive Y)
         -0.5,            # z1_joint2 (Shoulder Pitch) - Tilt arm down/forward
         1.2,             # z1_joint3 (Elbow Pitch) - Bend elbow FORWARD (away from base)
         0.0,             # z1_joint4 (Wrist Yaw)
@@ -384,24 +386,30 @@ def main():
     # Set trajectory center based on reachable workspace
     # The arm at home extends ~0.55m in X, so center circle closer to base
     # Use a center that's reachable with the arm bent
-    circle_center = [0.45, 0.0, 0.15]  # Fixed center within the workspace
+    circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
     
-    # Circle start point
+    # Circle start point (where the cleaning circle begins)
     circle_start = np.array([circle_center[0] + args.radius, circle_center[1], circle_center[2]])
+    
+    # Define INITIAL STARTING POSITION on the far left (distant from circle start)
+    # This creates a visible approach trajectory
+    initial_start_position = np.array([circle_center[0], 0.35, circle_center[2]])  # Far left: Y = +0.35m
+    
     print(f"\nCircle center: {circle_center}")
     print(f"Circle start point: {circle_start}")
+    print(f"Initial start position (far left): {initial_start_position}")
     
-    # Use full pose IK to find configuration with the correct position AND orientation
-    q_init, ik_success = robot.compute_ik_for_pose(circle_start, R_desired, q_init=q_seed)
+    # Use full pose IK to find configuration for the DISTANT starting position
+    q_init, ik_success = robot.compute_ik_for_pose(initial_start_position, R_desired, q_init=q_seed)
     if ik_success:
-        print(f"IK converged to reach circle start with correct orientation")
+        print(f"IK converged to reach initial start position with correct orientation")
     else:
         print(f"IK did not fully converge, using best estimate")
     
     pos_init, rot_init = robot.get_tool_pose(q_init)
     print(f"Initial config tool position: {pos_init}")
     print(f"Initial config tool z-axis: {rot_init[:, 2]}")
-    print(f"Initial position error: {np.linalg.norm(circle_start - pos_init):.4f}m")
+    print(f"Distance to circle start: {np.linalg.norm(circle_start - pos_init):.4f}m")
     
     # Trajectory parameters
     trajectory_params = {
@@ -409,7 +417,7 @@ def main():
         'circle_radius': args.radius,
         'circle_height': 0.15,  # Fixed height above table
         'circle_omega': args.omega,
-        'approach_duration': 3.0  # Allow time for approach
+        'approach_duration': 8.0  # Longer duration for visible approach phase
     }
     
     # Controller parameters - high gains for accurate tracking

@@ -281,6 +281,73 @@ class PointToPointTrajectory:
         return pose, twist, accel
 
 
+class CartesianTrajectory:
+    """
+    Linear (Cartesian) point-to-point trajectory.
+    Uses constant velocity linear interpolation.
+    """
+    
+    def __init__(self, p_start, p_end, R_start, R_end, duration):
+        """
+        Initialize Cartesian trajectory.
+        
+        Args:
+            p_start: (3,) starting position
+            p_end: (3,) ending position
+            R_start: (3,3) starting rotation
+            R_end: (3,3) ending rotation
+            duration: Time duration in seconds
+        """
+        self.p_start = np.array(p_start)
+        self.p_end = np.array(p_end)
+        self.R_start = np.array(R_start)
+        self.R_end = np.array(R_end)
+        self.duration = duration
+        
+        # Compute rotation difference using log map
+        R_diff = self.R_end @ self.R_start.T
+        self.axis_angle = pin.log3(R_diff)
+        
+        # Constant velocity
+        self.velocity = (self.p_end - self.p_start) / duration
+        self.angular_velocity = self.axis_angle / duration
+    
+    def get_pose_reference(self, t):
+        """Get reference pose at time t using linear interpolation."""
+        # Clamp time to [0, duration]
+        t = np.clip(t, 0.0, self.duration)
+        s = t / self.duration
+        
+        # Linear interpolation for position
+        p = self.p_start + s * (self.p_end - self.p_start)
+        
+        # Linear interpolation for rotation using exponential map
+        R = pin.exp3(s * self.axis_angle) @ self.R_start
+        
+        return pin.SE3(R, p)
+    
+    def get_twist_reference(self, t):
+        """Get reference twist at time t (constant velocity)."""
+        if t < 0 or t > self.duration:
+            # Zero velocity outside the trajectory duration
+            return np.zeros(6)
+        
+        # Constant linear and angular velocity
+        return np.concatenate([self.velocity, self.angular_velocity])
+    
+    def get_acceleration_reference(self, t):
+        """Get reference acceleration at time t (zero for linear motion)."""
+        # Zero acceleration for constant velocity motion
+        return np.zeros(6)
+    
+    def get_full_reference(self, t):
+        """Get complete reference."""
+        pose = self.get_pose_reference(t)
+        twist = self.get_twist_reference(t)
+        accel = self.get_acceleration_reference(t)
+        return pose, twist, accel
+
+
 class CleaningTrajectory:
     """
     Complete cleaning trajectory manager.
@@ -319,12 +386,12 @@ class CleaningTrajectory:
         # Get starting point on circle (t=0)
         circle_start_pose = self.circle_traj.get_pose_reference(0)
 
-        p_init = None
-        if self.use_quintic:
-            # Get initial pose from the robot
-            p_init, R_init = self.robot.get_tool_pose(q_init)
+        # Get initial pose from the robot
+        p_init, R_init = self.robot.get_tool_pose(q_init)
 
-            # Create the approach trajectory
+        # Create the approach trajectory based on interpolation type
+        if self.use_quintic:
+            # Quintic polynomial (smooth acceleration)
             self.approach_traj = PointToPointTrajectory(
                 p_start=p_init,
                 p_end=circle_start_pose.translation,
@@ -332,15 +399,22 @@ class CleaningTrajectory:
                 R_end=circle_start_pose.rotation,
                 duration=approach_duration
             )
+            print(f"[CleaningTrajectory] Using QUINTIC polynomial interpolation")
         else:
-            self.approach_traj = None
-            self.static_start_pose = circle_start_pose
+            # Cartesian linear interpolation (constant velocity)
+            self.approach_traj = CartesianTrajectory(
+                p_start=p_init,
+                p_end=circle_start_pose.translation,
+                R_start=R_init,
+                R_end=circle_start_pose.rotation,
+                duration=approach_duration
+            )
+            print(f"[CleaningTrajectory] Using CARTESIAN linear interpolation")
         
         print(f"[CleaningTrajectory] Initialized:")
         print(f"  Approach duration: {approach_duration} s")
         print(f"  Circle start: {circle_start_pose.translation}")
-        if p_init is not None:
-            print(f"  Initial position: {p_init}")
+        print(f"  Initial position: {p_init}")
     
     def get_reference(self, t):
         """
@@ -356,14 +430,9 @@ class CleaningTrajectory:
             phase: 'approach' or 'circle'
         """
         if t < self.approach_duration:
-            # Approach phase
+            # Approach phase (quintic or Cartesian)
             phase = 'approach'
-            if self.use_quintic:
-                pose, twist, accel = self.approach_traj.get_full_reference(t)
-            else:
-                pose = self.static_start_pose
-                twist = np.zeros(6)
-                accel = np.zeros(6)
+            pose, twist, accel = self.approach_traj.get_full_reference(t)
         else:
             # Circular cleaning phase
             t_circle = t - self.approach_duration
