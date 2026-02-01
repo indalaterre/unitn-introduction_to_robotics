@@ -24,7 +24,7 @@ class CircularTrajectory:
     
     def __init__(self, center=None, radius=0.20, height=0.05, omega=0.5):
         """
-        Initialize circular trajectory generator.
+        Initialize the circular trajectory generator.
         
         Args:
             center: (3,) Center point of circle in world frame [x, y, z]
@@ -38,16 +38,16 @@ class CircularTrajectory:
         self.omega = omega
         
         if center is None:
-            # Default center: in front of robot, at specified height
+            # Default center: in front of robot, at the specified height
             self.center = np.array([0.4, 0.0, self.height])
         else:
             self.center = np.array(center)
-            self.center[2] = self.height  # Ensure correct height
+            self.center[2] = self.height  # Ensure the correct height
         
         # Desired orientation: tool z-axis pointing DOWN
-        # This means R_des rotates world frame so that:
-        # - Tool x-axis points in world +X (forward)
-        # - Tool y-axis points in world +Y (left)
+        # This means R_des rotates the world frame so that:
+        # - Tool x-axis points in the world +X (forward)
+        # - Tool y-axis points in the world +Y (left)
         # - Tool z-axis points in world -Z (down toward table)
         # R_des = Ry(pi) to flip z-axis
         self.R_desired = np.array([
@@ -78,7 +78,7 @@ class CircularTrajectory:
         """
         theta = self.omega * t
         
-        # Position on circle
+        # Position on the circle
         p = self.center.copy()
         p[0] += self.radius * np.cos(theta)
         p[1] += self.radius * np.sin(theta)
@@ -189,12 +189,12 @@ class CircularTrajectory:
 class PointToPointTrajectory:
     """
     Smooth point-to-point trajectory using quintic polynomial.
-    Used for initial approach to the circle.
+    Used for the initial approach to the circle.
     """
     
     def __init__(self, p_start, p_end, R_start, R_end, duration):
         """
-        Initialize point-to-point trajectory.
+        Initialize the point-to-point trajectory.
         
         Args:
             p_start: (3,) starting position
@@ -290,7 +290,8 @@ class CleaningTrajectory:
     def __init__(self, robot_model, q_init, 
                  circle_center=None, circle_radius=0.20, 
                  circle_height=0.05, circle_omega=0.5,
-                 approach_duration=3.0):
+                 approach_duration=3.0,
+                 use_quintic=True):
         """
         Initialize cleaning trajectory.
         
@@ -304,6 +305,7 @@ class CleaningTrajectory:
             approach_duration: Duration of approach phase
         """
         self.robot = robot_model
+        self.use_quintic = use_quintic
         self.approach_duration = approach_duration
         
         # Create circular trajectory
@@ -314,25 +316,31 @@ class CleaningTrajectory:
             omega=circle_omega
         )
         
-        # Get initial pose from robot
-        p_init, R_init = self.robot.get_tool_pose(q_init)
-        
         # Get starting point on circle (t=0)
         circle_start_pose = self.circle_traj.get_pose_reference(0)
-        
-        # Create approach trajectory
-        self.approach_traj = PointToPointTrajectory(
-            p_start=p_init,
-            p_end=circle_start_pose.translation,
-            R_start=R_init,
-            R_end=circle_start_pose.rotation,
-            duration=approach_duration
-        )
+
+        p_init = None
+        if self.use_quintic:
+            # Get initial pose from the robot
+            p_init, R_init = self.robot.get_tool_pose(q_init)
+
+            # Create the approach trajectory
+            self.approach_traj = PointToPointTrajectory(
+                p_start=p_init,
+                p_end=circle_start_pose.translation,
+                R_start=R_init,
+                R_end=circle_start_pose.rotation,
+                duration=approach_duration
+            )
+        else:
+            self.approach_traj = None
+            self.static_start_pose = circle_start_pose
         
         print(f"[CleaningTrajectory] Initialized:")
         print(f"  Approach duration: {approach_duration} s")
-        print(f"  Initial position: {p_init}")
         print(f"  Circle start: {circle_start_pose.translation}")
+        if p_init is not None:
+            print(f"  Initial position: {p_init}")
     
     def get_reference(self, t):
         """
@@ -349,8 +357,13 @@ class CleaningTrajectory:
         """
         if t < self.approach_duration:
             # Approach phase
-            pose, twist, accel = self.approach_traj.get_full_reference(t)
             phase = 'approach'
+            if self.use_quintic:
+                pose, twist, accel = self.approach_traj.get_full_reference(t)
+            else:
+                pose = self.static_start_pose
+                twist = np.zeros(6)
+                accel = np.zeros(6)
         else:
             # Circular cleaning phase
             t_circle = t - self.approach_duration

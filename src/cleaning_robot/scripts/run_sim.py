@@ -384,14 +384,14 @@ def main():
     # Set trajectory center based on reachable workspace
     # The arm at home extends ~0.55m in X, so center circle closer to base
     # Use a center that's reachable with the arm bent
-    circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
+    circle_center = [0.45, 0.0, 0.15]  # Fixed center within the workspace
     
     # Circle start point
     circle_start = np.array([circle_center[0] + args.radius, circle_center[1], circle_center[2]])
     print(f"\nCircle center: {circle_center}")
     print(f"Circle start point: {circle_start}")
     
-    # Use full pose IK to find configuration with correct position AND orientation
+    # Use full pose IK to find configuration with the correct position AND orientation
     q_init, ik_success = robot.compute_ik_for_pose(circle_start, R_desired, q_init=q_seed)
     if ik_success:
         print(f"IK converged to reach circle start with correct orientation")
@@ -415,9 +415,9 @@ def main():
     # Controller parameters - high gains for accurate tracking
     controller_params = {
         'Kp_pos': 800.0,
-        'Kd_pos': 80.0,
+        'Kd_pos': 2 * np.sqrt(800.0),
         'Kp_rot': 600.0,
-        'Kd_rot': 60.0,
+        'Kd_rot': 2 * np.sqrt(600.0),
         'k_null': min(args.k_null, 2.0),  # Lower gain prioritizes tracking over manipulability
         'damping': 0.1  # Much higher damping to prevent singularity issues
     }
@@ -446,6 +446,7 @@ def main():
         trajectory = CleaningTrajectory(
             robot_model=robot,
             q_init=q_init,
+            use_quintic=False,
             **trajectory_params
         )
         
