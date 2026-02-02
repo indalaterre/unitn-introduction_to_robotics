@@ -389,7 +389,10 @@ def main():
     circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
     
     # Circle start point (where the cleaning circle begins)
-    circle_start = np.array([circle_center[0] + args.radius, circle_center[1], circle_center[2]])
+    circle_start = np.array([
+        circle_center[0] + args.radius, 
+        circle_center[1], 
+        circle_center[2]])
     
     # Define INITIAL STARTING POSITION on the far left (distant from circle start)
     # This creates a visible approach trajectory
@@ -421,11 +424,16 @@ def main():
     }
     
     # Controller parameters - high gains for accurate tracking
+    kp_approach = 400
+    kd_approach = 2 * np.sqrt(kp_approach) + 5
+
+    kp_rotation = 300
+    kd_rotation = 2 * np.sqrt(kp_rotation) + 5
     controller_params = {
-        'Kp_pos': 800.0,
-        'Kd_pos': 2 * np.sqrt(800.0),
-        'Kp_rot': 600.0,
-        'Kd_rot': 2 * np.sqrt(600.0),
+        'Kp_pos': kp_approach,
+        'Kd_pos': kd_approach,
+        'Kp_rot': kp_rotation,
+        'Kd_rot': kd_rotation,
         'k_null': min(args.k_null, 2.0),  # Lower gain prioritizes tracking over manipulability
         'damping': 0.1  # Much higher damping to prevent singularity issues
     }

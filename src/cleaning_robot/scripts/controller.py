@@ -143,6 +143,12 @@ class TaskSpaceController:
 
             # Step C: Project EVERYTHING into Null Space at once
             N = self.robot.null_space_projector(J, current_damping)  # Use same damping as pseudoinverse
+
+            max_grad = 5.0
+            norm_grad = np.linalg.norm(qddot_secondary)
+            if norm_grad > max_grad:
+                qddot_secondary *= (max_grad / norm_grad)
+                
             qddot_null_raw = N @ qddot_secondary
 
             # Step D: Safety Clamp
