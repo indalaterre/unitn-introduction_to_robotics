@@ -105,12 +105,14 @@ class TaskSpaceController:
         # <--- FIX 2: CALCULATE DAMPING FIRST (Before Primary Task)
         # Previously, you calculated this too late. Now we do it first.
         manip = self.robot.compute_manipulability(q, use_position_only=True)
-        current_damping = self.damping
+        manip_threshold = .06
         
         # Dynamic Damping: Increase damping progressively as manipulability drops
-        if manip < 0.06:
+        if manip < manip_threshold:
             # More aggressive damping increase starting earlier
-            current_damping = self.damping + (0.06 - manip) * 50.0
+            current_damping = self.damping + (1 - (manip / manip_threshold) ** 2) * .01
+        else:
+            current_damping = self.damping
             
         # Create the SAFE Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)

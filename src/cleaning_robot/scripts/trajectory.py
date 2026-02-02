@@ -283,13 +283,13 @@ class PointToPointTrajectory:
 
 class CartesianTrajectory:
     """
-    Linear (Cartesian) point-to-point trajectory.
-    Uses constant velocity linear interpolation.
+    Linear (Cartesian) point-to-point trajectory with trapezoidal velocity profile.
+    Uses smooth acceleration ramps at start and end to avoid velocity discontinuities.
     """
     
-    def __init__(self, p_start, p_end, R_start, R_end, duration):
+    def __init__(self, p_start, p_end, R_start, R_end, duration, accel_time=0.5):
         """
-        Initialize Cartesian trajectory.
+        Initialize Cartesian trajectory with trapezoidal velocity profile.
         
         Args:
             p_start: (3,) starting position
@@ -297,6 +297,7 @@ class CartesianTrajectory:
             R_start: (3,3) starting rotation
             R_end: (3,3) ending rotation
             duration: Time duration in seconds
+            accel_time: Time for acceleration/deceleration ramps (default 0.5s)
         """
         self.p_start = np.array(p_start)
         self.p_end = np.array(p_end)
@@ -304,41 +305,136 @@ class CartesianTrajectory:
         self.R_end = np.array(R_end)
         self.duration = duration
         
+        # Limit acceleration time to at most half the duration
+        self.t_accel = min(accel_time, duration / 2.0)
+        self.t_decel = self.t_accel
+        self.t_const = duration - self.t_accel - self.t_decel
+        
         # Compute rotation difference using log map
         R_diff = self.R_end @ self.R_start.T
         self.axis_angle = pin.log3(R_diff)
         
-        # Constant velocity
-        self.velocity = (self.p_end - self.p_start) / duration
-        self.angular_velocity = self.axis_angle / duration
+        # Compute maximum velocity during constant phase
+        # Total distance = area under velocity trapezoid
+        # s = 0.5 * v_max * t_accel + v_max * t_const + 0.5 * v_max * t_decel
+        # s = v_max * (duration - 0.5 * t_accel - 0.5 * t_decel)
+        total_distance = np.linalg.norm(self.p_end - self.p_start)
+        if total_distance > 1e-6:
+            self.v_max = total_distance / (duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
+            self.direction = (self.p_end - self.p_start) / total_distance
+        else:
+            self.v_max = 0.0
+            self.direction = np.zeros(3)
+
+        # Angular velocity magnitude
+        axis_angle_norm = np.linalg.norm(self.axis_angle)
+        if axis_angle_norm > 1e-6:
+            self.omega_max = axis_angle_norm / (duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
+            self.angular_direction = self.axis_angle / axis_angle_norm
+        else:
+            self.omega_max = 0.0
+            self.angular_direction = np.zeros(3)
+    
+    def _get_velocity_profile(self, t):
+        """
+        Compute velocity and acceleration for trapezoidal profile.
+        
+        Returns:
+            v: velocity magnitude [0, v_max]
+            a: acceleration magnitude
+        """
+        if t <= 0:
+            return 0.0, 0.0
+        elif t >= self.duration:
+            return 0.0, 0.0
+        elif t < self.t_accel:
+            # Acceleration phase: linear ramp up
+            a = self.v_max / self.t_accel
+            v = a * t
+            return v, a
+        elif t < self.t_accel + self.t_const:
+            # Constant velocity phase
+            return self.v_max, 0.0
+        else:
+            # Deceleration phase: linear ramp down
+            t_decel_phase = t - (self.t_accel + self.t_const)
+            a = -self.v_max / self.t_decel
+            v = self.v_max + a * t_decel_phase
+            return v, a
+    
+    def _get_position_from_velocity(self, t):
+        """
+        Integrate velocity profile to get position along trajectory.
+        
+        Returns:
+            s: position parameter [0, 1]
+        """
+        if t <= 0:
+            return 0.0
+        elif t >= self.duration:
+            return 1.0
+        elif t < self.t_accel:
+            # Acceleration phase: s = 0.5 * a * t^2
+            a = self.v_max / self.t_accel
+            distance = 0.5 * a * t**2
+        elif t < self.t_accel + self.t_const:
+            # Constant velocity phase
+            distance_accel = 0.5 * self.v_max * self.t_accel
+            distance_const = self.v_max * (t - self.t_accel)
+            distance = distance_accel + distance_const
+        else:
+            # Deceleration phase
+            t_decel_phase = t - (self.t_accel + self.t_const)
+            distance_accel = 0.5 * self.v_max * self.t_accel
+            distance_const = self.v_max * self.t_const
+            distance_decel = self.v_max * t_decel_phase - 0.5 * (self.v_max / self.t_decel) * t_decel_phase**2
+            distance = distance_accel + distance_const + distance_decel
+        
+        # Normalize to [0, 1]
+        total_distance = np.linalg.norm(self.p_end - self.p_start)
+        if total_distance > 1e-6:
+            return distance / total_distance
+        else:
+            return 1.0 if t >= self.duration else 0.0
     
     def get_pose_reference(self, t):
-        """Get reference pose at time t using linear interpolation."""
-        # Clamp time to [0, duration]
-        t = np.clip(t, 0.0, self.duration)
-        s = t / self.duration
+        """Get reference pose at time t using trapezoidal velocity profile."""
+        # Get position parameter from velocity integration
+        s = self._get_position_from_velocity(t)
         
-        # Linear interpolation for position
+        # Interpolate position
         p = self.p_start + s * (self.p_end - self.p_start)
         
-        # Linear interpolation for rotation using exponential map
+        # Interpolate rotation using exponential map
         R = pin.exp3(s * self.axis_angle) @ self.R_start
         
         return pin.SE3(R, p)
     
     def get_twist_reference(self, t):
-        """Get reference twist at time t (constant velocity)."""
-        if t < 0 or t > self.duration:
-            # Zero velocity outside the trajectory duration
-            return np.zeros(6)
+        """Get reference twist at time t (trapezoidal velocity profile)."""
+        v, _ = self._get_velocity_profile(t)
         
-        # Constant linear and angular velocity
-        return np.concatenate([self.velocity, self.angular_velocity])
+        # Linear velocity
+        v_linear = v * self.direction
+        
+        # Angular velocity (same profile)
+        omega_current = v / self.v_max * self.omega_max if self.v_max > 1e-6 else 0.0
+        v_angular = omega_current * self.angular_direction
+        
+        return np.concatenate([v_linear, v_angular])
     
     def get_acceleration_reference(self, t):
-        """Get reference acceleration at time t (zero for linear motion)."""
-        # Zero acceleration for constant velocity motion
-        return np.zeros(6)
+        """Get reference acceleration at time t (trapezoidal profile)."""
+        _, a = self._get_velocity_profile(t)
+        
+        # Linear acceleration
+        a_linear = a * self.direction
+        
+        # Angular acceleration (same profile)
+        alpha_current = a / self.v_max * self.omega_max if self.v_max > 1e-6 else 0.0
+        a_angular = alpha_current * self.angular_direction
+        
+        return np.concatenate([a_linear, a_angular])
     
     def get_full_reference(self, t):
         """Get complete reference."""
@@ -389,7 +485,7 @@ class CleaningTrajectory:
         # Get initial pose from the robot
         p_init, R_init = self.robot.get_tool_pose(q_init)
 
-        # Create the approach trajectory based on interpolation type
+        # Create the approach trajectory based on the interpolation type
         if self.use_quintic:
             # Quintic polynomial (smooth acceleration)
             self.approach_traj = PointToPointTrajectory(
