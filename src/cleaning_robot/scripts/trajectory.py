@@ -212,6 +212,10 @@ class PointToPointTrajectory:
         # Ensure quaternions are normalized and use shortest path
         if self.q_start.dot(self.q_end) < 0:
             self.q_end.coeffs *= -1  # Take shortest path
+        
+        # Compute rotation difference using log map for velocity/acceleration
+        R_diff = self.R_end @ self.R_start.T
+        self.axis_angle = pin.log3(R_diff)
     
     def _quintic_profile(self, t):
         """
@@ -250,7 +254,7 @@ class PointToPointTrajectory:
         p = self.p_start + s * (self.p_end - self.p_start)
         
         # Interpolate rotation using quaternion SLERP
-        q_interp = self.q_start.slerp(self.q_end, s)
+        q_interp = self.q_start.slerp(s, self.q_end)
         R = q_interp.toRotationMatrix()
         
         return pin.SE3(R, p)
@@ -262,13 +266,9 @@ class PointToPointTrajectory:
         # Linear velocity
         v_linear = ds * (self.p_end - self.p_start)
         
-        # Angular velocity from quaternion derivative
-        # For SLERP: ω = 2 * q̇ * q* (where q* is quaternion conjugate)
-        q_current = self.q_start.slerp(self.q_end, s)
-        # Approximate quaternion derivative for SLERP
-        q_dot = (self.q_end - self.q_start) / self.duration * ds
-        omega_quat = 2.0 * pin.Quaternion(q_dot.coeffs) * q_current.conjugate()
-        v_angular = omega_quat.vec()  # Extract vector part (angular velocity)
+        # Angular velocity using axis-angle representation
+        # For rotation interpolation: ω = ds/dt * axis_angle
+        v_angular = ds * self.axis_angle
         
         return np.concatenate([v_linear, v_angular])
     
@@ -279,12 +279,9 @@ class PointToPointTrajectory:
         # Linear acceleration
         a_linear = dds * (self.p_end - self.p_start)
         
-        # Angular acceleration from quaternion second derivative
-        q_current = self.q_start.slerp(self.q_end, s)
-        # Approximate quaternion second derivative for SLERP
-        q_ddot = (self.q_end - self.q_start) / self.duration * dds
-        alpha_quat = 2.0 * pin.Quaternion(q_ddot.coeffs) * q_current.conjugate()
-        a_angular = alpha_quat.vec()  # Extract vector part (angular acceleration)
+        # Angular acceleration using axis-angle representation
+        # For rotation interpolation: α = d²s/dt² * axis_angle
+        a_angular = dds * self.axis_angle
         
         return np.concatenate([a_linear, a_angular])
     
@@ -584,14 +581,15 @@ def compute_pose_error(pose_current, pose_desired):
         
     Returns:
         e_pos: (3,) position error
-        e_rot: (3,3) orientation error matrix (R_des * R_cur^T)
+        e_rot: (3,) orientation error (axis-angle from log map)
     """
     # Position error
     e_pos = pose_desired.translation - pose_current.translation
     
-    # Orientation error using direct matrix multiplication
-    # e_R = R_des * R_cur^T
-    e_rot = pose_desired.rotation @ pose_current.rotation.T
+    # Orientation error using SO(3) log map
+    # e_R = log(R_des * R_cur^T)
+    R_error = pose_desired.rotation @ pose_current.rotation.T
+    e_rot = pin.log3(R_error)
     
     return e_pos, e_rot
 

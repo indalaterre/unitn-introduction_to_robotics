@@ -399,8 +399,9 @@ class RobotModel:
             # Position error
             e_pos = target_pos - pos
             
-            # Orientation error using direct matrix multiplication
-            e_rot = target_rot @ rot.T
+            # Orientation error using SO(3) log map
+            R_error = target_rot @ rot.T
+            e_rot = pin.log3(R_error)  # Convert to axis-angle vector (3,)
             
             pos_err_norm = np.linalg.norm(e_pos)
             rot_err_norm = np.linalg.norm(e_rot)

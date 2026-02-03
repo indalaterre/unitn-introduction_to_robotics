@@ -111,6 +111,9 @@ class ROSSimulation:
         marker.color.b = 0.0
         marker.color.a = 1.0
         
+        # Initialize pose orientation (required by ROS)
+        marker.pose.orientation.w = 1.0
+        
         # Generate trajectory points
         if hasattr(self.trajectory, 'circle_traj'):
             traj = self.trajectory.circle_traj
@@ -124,11 +127,7 @@ class ROSSimulation:
         
         self.traj_marker_pub.publish(marker)
     
-    def publish_robot_trajectory_marker(self, trajectory_points):
-        """Publish actual robot trajectory in blue."""
-        if len(trajectory_points) < 2:
-            return
-        
+    def init_robot_trajectory_marker(self):
         marker = Marker()
         marker.header.frame_id = 'world'
         marker.header.stamp = rospy.Time.now()
@@ -137,17 +136,23 @@ class ROSSimulation:
         marker.type = Marker.LINE_STRIP
         marker.action = Marker.ADD
         
-        marker.scale.x = 0.008  # Line width (slightly thicker)
+        marker.scale.x = 0.004  # Line width (slightly thicker)
         marker.color.r = 0.0  # No red
         marker.color.g = 0.0  # No green  
         marker.color.b = 1.0  # Full blue
         marker.color.a = 1.0  # Full opacity
         
-        # Add trajectory points
-        for pos in trajectory_points:
-            p = Point()
-            p.x, p.y, p.z = pos
-            marker.points.append(p)
+        # Initialize pose orientation (required by ROS)
+        marker.pose.orientation.w = 1.0
+
+        return marker
+
+
+    def publish_robot_trajectory_marker(self, marker, position):
+        """Publish actual robot trajectory in blue."""        
+        p = Point()
+        p.x, p.y, p.z = position
+        marker.points.append(p)
         
         self.traj_marker_pub.publish(marker)
     
@@ -181,6 +186,17 @@ class ROSSimulation:
         marker_array.markers.append(marker)
         self.marker_pub.publish(marker_array)
     
+    def delete_robot_trajectory_marker(self):
+        """Delete existing blue robot trajectory marker."""
+        marker = Marker()
+        marker.header.frame_id = 'world'
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = 'robot_trajectory'
+        marker.id = 1
+        marker.action = Marker.DELETE
+        
+        self.traj_marker_pub.publish(marker)
+    
     def run(self, duration, q_init):
         """
         Run the simulation loop.
@@ -198,9 +214,13 @@ class ROSSimulation:
         # Store actual robot trajectory points
         robot_trajectory_points = []
         
+        # Delete any existing blue trajectory from previous runs
+        self.delete_robot_trajectory_marker()
+        
         # Publish initial markers
         self.publish_table_marker()
         self.publish_trajectory_marker()
+        robot_trajectory_marker = self.init_robot_trajectory_marker()
         
         start_time = rospy.Time.now()
         
@@ -218,8 +238,8 @@ class ROSSimulation:
             tau, info = self.controller.compute_control(q, dq, pose_ref, twist_ref, accel_ref)
             
             # Get the current tool pose and store trajectory point
-            current_pose, _ = self.robot.get_tool_pose(q)
-            robot_trajectory_points.append(current_pose.translation.copy())
+            current_pos, _ = self.robot.get_tool_pose(q)
+            self.publish_robot_trajectory_marker(robot_trajectory_marker, current_pos)
             
             # Log
             self.logger.log(t, q, dq, tau, info, phase)
@@ -248,7 +268,7 @@ class ROSSimulation:
         
         # Publish the actual robot trajectory in blue
         print("[ROSSimulation] Publishing robot trajectory in blue...")
-        self.publish_robot_trajectory_marker(robot_trajectory_points)
+        
         
         print("[ROSSimulation] Complete")
         return self.logger
@@ -296,8 +316,8 @@ class StandaloneSimulation:
             tau, info = self.controller.compute_control(q, dq, pose_ref, twist_ref, accel_ref)
             
             # Get the current tool pose and store the trajectory point
-            current_pose, _ = self.robot.get_tool_pose(q)
-            robot_trajectory_points.append(current_pose.translation.copy())
+            current_pos, _ = self.robot.get_tool_pose(q)
+            robot_trajectory_points.append(current_pos.copy())
             
             # Log
             self.logger.log(t, q, dq, tau, info, phase)
@@ -476,10 +496,10 @@ def main():
     kp_rotation = 600
     kd_rotation = 2 * np.sqrt(kp_rotation)
     controller_params = {
-        'Kp_pos': kp_approach,
-        'Kd_pos': kd_approach,
-        'Kp_rot': kp_rotation,
-        'Kd_rot': kd_rotation,
+        'kp_pos': kp_approach,
+        'kd_pos': kd_approach,
+        'kp_rot': kp_rotation,
+        'kd_rot': kd_rotation,
         'k_null': min(args.k_null, 2.0),  # Lower gain prioritizes tracking over manipulability
         'damping': 0.1  # Much higher damping to prevent singularity issues
     }
