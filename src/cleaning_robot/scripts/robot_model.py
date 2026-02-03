@@ -22,7 +22,7 @@ class RobotModel:
     
     def __init__(self, urdf_path=None):
         """
-        Initialize robot model from URDF.
+        Initialize the robot model from URDF.
         
         Args:
             urdf_path: Path to URDF file. If None, uses default assembly.urdf
@@ -154,7 +154,7 @@ class RobotModel:
                                                  reference_frame)
         return np.concatenate([acc.linear, acc.angular])
     
-    def get_mass_matrix(self, q):
+    def get_inertia_matrix(self, q):
         """
         Compute joint-space mass/inertia matrix M(q).
         
@@ -164,13 +164,19 @@ class RobotModel:
         Returns:
             M: (8, 8) symmetric positive definite mass matrix
         """
+
+        # To save computation time, Pinocchio calculates only the upper triangle of the inertia matrix
+        # This is fine since this matrix is symmetric by design (the effect of a joint A over a joint B
+        # is the same as seen from joint B to joint A)
+        # The final statement is needed to mirror this triangle and complete the M matrix
+
         M = pin.crba(self.model, self.data, q)
-        # Make symmetric (CRBA only fills the upper triangle)
         return np.triu(M) + np.triu(M, 1).T
     
     def get_bias_forces(self, q, dq):
         """
-        Compute bias forces h(q, qdot) = C(q,qdot)*qdot + g(q).
+        Compute bias forces of Coriolis + gravity
+            h(q, qdot) = C(q,qdot) * qdot + g(q).
         
         Args:
             q: Joint positions (8,)
@@ -234,56 +240,51 @@ class RobotModel:
         """
         return pin.aba(self.model, self.data, q, dq, tau)
     
-    def compute_manipulability(self, q, use_position_only=True):
+    def compute_yoshikawa_manipulability(self, q, damping_lambda=1e-10):
         """
         Compute manipulability measure w(q) = sqrt(det(J * J^T)).
         
         Args:
             q: Joint positions (8,)
-            use_position_only: If True, use only position Jacobian (3x8)
+            damping_lambda: Damping parameter for numerical stability
             
         Returns:
             w: Manipulability scalar
         """
         J = self.get_jacobian(q)
-        
-        if use_position_only:
-            Jp = J[:3, :]  # Position Jacobian (3x8)
-        else:
-            Jp = J  # Full Jacobian (6x8)
-        
-        # w = sqrt(det(Jp * Jp^T))
-        det_val = np.linalg.det(Jp @ Jp.T)
-        
-        # Add a small damping for numerical stability
-        if det_val < 1e-10:
-            det_val = 1e-10
-        
+
+        det_val = np.linalg.det(J @ J.T)
+        det_val = np.clip(det_val, damping_lambda, None)
+
+        # w = sqrt(det(J * J^T))
         return np.sqrt(det_val)
     
-    def compute_manipulability_gradient(self, q, epsilon=1e-4, use_position_only=True):
+    def compute_manipulability_gradient(self, q, epsilon=1e-4):
         """
         Compute gradient of manipulability w.r.t. the joint angles using finite differences.
         
         Args:
             q: Joint positions (8,)
             epsilon: Finite difference step size
-            use_position_only: If True, use only position Jacobian
             
         Returns:
             grad: (8,) gradient vector dw/dq
         """
         grad = np.zeros(self.nq)
-        w0 = self.compute_manipulability(q, use_position_only)
-        
+        w0 = self.compute_yoshikawa_manipulability(q)
+
+        # Executes the loop for each joint parameter q0, q1, ...., q7
         for i in range(self.nq):
             q_plus = q.copy()
+
+            # The goal is to add a small value to the i-th joint parameter
+            # to calculate how the manipulability changes for the entire robot
             q_plus[i] += epsilon
             
             # Clip to joint limits
             q_plus[i] = np.clip(q_plus[i], self.q_min[i], self.q_max[i])
             
-            w_plus = self.compute_manipulability(q_plus, use_position_only)
+            w_plus = self.compute_yoshikawa_manipulability(q_plus)
             grad[i] = (w_plus - w0) / epsilon
         
         return grad
@@ -315,8 +316,8 @@ class RobotModel:
         Returns:
             N: (n, n) null-space projector
         """
-        J_pseudo_inv = self.damped_pseudoinverse(J, damping)
-        return np.eye(self.nq) - J_pseudo_inv @ J
+        J_pinv = self.damped_pseudoinverse(J, damping)
+        return np.eye(self.nq) - J_pinv @ J
     
     def clip_to_limits(self, q):
         """Clip joint positions to limits."""
@@ -370,7 +371,7 @@ class RobotModel:
     def compute_ik_for_pose(self, target_pos, target_rot, q_init=None, max_iter=200, 
                              pos_tol=1e-3, rot_tol=0.05):
         """
-        Iterative IK to find configuration reaching target pose (position + orientation).
+        Gauss-Newton method for numerical IK to find configuration reaching target pose (position + orientation).
         Uses damped least squares.
         
         Args:
@@ -385,11 +386,9 @@ class RobotModel:
             q: Joint configuration
             success: Whether IK converged
         """
-        if q_init is None:
-            q = self.get_home_configuration()
-        else:
-            q = q_init.copy()
-        
+
+        q = self.get_home_configuration() if q_init is None else q_init.copy()
+
         alpha = 0.3  # Step size
         damping = 0.05
         
@@ -423,7 +422,7 @@ class RobotModel:
             q = q + dq
             q = self.clip_to_limits(q)
         
-        # Return best result even if not fully converged
+        # Return the best result even if it doesn't fully converge
         return q, False
     
     def compute_ik_for_position(self, target_pos, q_init=None, max_iter=100, tol=1e-4):
@@ -441,10 +440,7 @@ class RobotModel:
             q: Joint configuration
             success: Whether IK converged
         """
-        if q_init is None:
-            q = self.get_home_configuration()
-        else:
-            q = q_init.copy()
+        q = self.get_home_configuration() if q_init is None else q_init.copy()
         
         alpha = 0.5  # Step size
         damping = 0.1
@@ -496,12 +492,12 @@ def test_robot_model():
     print(f"Jacobian (position rows):\n{np.round(J[:3, :], 3)}")
     
     # Mass matrix
-    M = robot.get_mass_matrix(q)
+    M = robot.get_inertia_matrix(q)
     print(f"\nMass matrix shape: {M.shape}")
     print(f"Mass matrix diagonal: {np.round(np.diag(M), 4)}")
     
     # Manipulability
-    w = robot.compute_manipulability(q)
+    w = robot.compute_yoshikawa_manipulability(q)
     print(f"\nManipulability: {w:.6f}")
     
     # Manipulability gradient

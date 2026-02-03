@@ -16,6 +16,7 @@ where:
     xddot* = xddot_ref + Kd*(xdot_ref - xdot) + Kp*e
     e = [e_pos; e_rot]  (position and orientation errors)
 """
+from typing import Any
 
 import numpy as np
 import pinocchio as pin
@@ -102,61 +103,32 @@ class TaskSpaceController:
         error = np.concatenate([e_pos, e_rot])
         J = self.robot.get_jacobian(q)
 
-        # Previously, you calculated this too late. Now we do it first.
-        manip = self.robot.compute_manipulability(q, use_position_only=True)
+        # The Yoshikawa manipulability is used to measure how close to the singularity the robot is.
+        # It is used to dynamically adjust the damping parameter of the pseudoinverse.
+        manip = self.robot.compute_yoshikawa_manipulability(q)
+
         current_damping = self.damping
         
         # Dynamic Damping: Increase damping progressively as manipulability drops
         if manip < 0.06:
             # More aggressive damping increase starting earlier
-            current_damping = self.damping + (0.06 - manip) * 50.0
+            current_damping += (0.06 - manip) * 50.0
             
         # Create the SAFE Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
 
         # --- PRIMARY TASK (Cleaning) ---
-        xdot = J @ dq
-        xdot_error = twist_ref - xdot
-        xddot_star = accel_ref + self.Kd @ xdot_error + self.Kp @ error
-        Jdot_qdot = self.robot.get_jacobian_derivative(q, dq)
-        
-        # Now the primary task uses the SAFE J_pinv
-        qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
+        qddot_task, xdot = self.calculate_primary_task(J, J_pinv, accel_ref, dq, error, q, twist_ref)
 
-        qddot_null = np.zeros(self.robot.nq)
-        if self.use_manipulability:
-            # Step A: Calculate Posture Correction (Pull towards Elbow-Up)
-            # q_accel = Kp*(q_des - q) - Kd*dq
-            qddot_secondary = self.kp_posture * (self.q_posture - q) - self.kd_posture * dq
-            
-            # Step B: Add Manipulability Optimization (Optional)
-            # Only add this if we are safe (manip > 0.055) and gain > 0
-            if self.k_null > 0 and manip > 0.055:
-                try:
-                    grad_w = self.robot.compute_manipulability_gradient(q, use_position_only=True)
-                    qddot_secondary += self.k_null * grad_w
-                except:
-                    pass
+        # --- SECONDARY TASK (Safe posture) ---
+        qddot_null = self.calculate_secondary_task(J, current_damping, dq, manip, q)
 
-            # Step C: Project EVERYTHING into Null Space at once
-            N = self.robot.null_space_projector(J, current_damping)  # Use same damping as pseudoinverse
-                
-            qddot_null_raw = N @ qddot_secondary
-
-            # Step D: Safety Clamp
-            max_null_ac = 10.0  # Allow meaningful posture correction
-            norm_null = np.linalg.norm(qddot_null_raw)
-            if norm_null > max_null_ac:
-                qddot_null = qddot_null_raw * (max_null_ac / norm_null)
-            else:
-                qddot_null = qddot_null_raw
-        
         # Summation
         qddot = qddot_task + qddot_null
         qddot = np.clip(qddot, -self.ddq_max, self.ddq_max)
         
         # Dynamics
-        M = self.robot.get_mass_matrix(q)
+        M = self.robot.get_inertia_matrix(q)
         h = self.robot.get_bias_forces(q, dq)
         
         if np.any(np.isnan(M)) or np.any(np.isnan(h)):
@@ -190,22 +162,45 @@ class TaskSpaceController:
         
         return tau, info
 
-    def set_gains(self, Kp_pos=None, Kd_pos=None, Kp_rot=None, Kd_rot=None, k_null=None):
-        """Update controller gains."""
-        if Kp_pos is not None:
-            self.Kp[:3, :3] = Kp_pos * np.eye(3)
-        if Kd_pos is not None:
-            self.Kd[:3, :3] = Kd_pos * np.eye(3)
-        if Kp_rot is not None:
-            self.Kp[3:, 3:] = Kp_rot * np.eye(3)
-        if Kd_rot is not None:
-            self.Kd[3:, 3:] = Kd_rot * np.eye(3)
-        if k_null is not None:
-            self.k_null = k_null
-    
-    def enable_manipulability(self, enable=True):
-        """Enable or disable manipulability optimization."""
-        self.use_manipulability = enable
+    def calculate_secondary_task(self, J, current_damping: float, dq, manip, q) -> Any:
+
+        qddot_null = np.zeros(self.robot.nq)
+        if self.use_manipulability:
+            # Calculating the secondary task wrt the specified joint configuration
+
+            # q_accel = Kp*(q_des - q) - Kd*dq
+            qddot_secondary = self.kp_posture * (self.q_posture - q) - self.kd_posture * dq
+
+
+            # It's preferable to optimize manipulability only in safe regions
+            # Near singularities small errors in the Jacobian can cause large errors in gradient
+            if self.k_null > 0 and manip > 0.055:
+                grad_w = self.robot.compute_manipulability_gradient(q)
+                qddot_secondary += self.k_null * grad_w
+
+            # Project the secondary task into the null space
+            # (I - J#J) * qddot
+            N = self.robot.null_space_projector(J, current_damping)
+            qddot_null_raw = N @ qddot_secondary
+
+            max_null_ac = 10.0  # Allow meaningful posture correction
+            norm_null = np.linalg.norm(qddot_null_raw)
+
+            if norm_null > max_null_ac:
+                qddot_null = qddot_null_raw * (max_null_ac / norm_null)
+            else:
+                qddot_null = qddot_null_raw
+
+        return qddot_null
+
+    def calculate_primary_task(self, J, J_pinv, accel_ref, dq, error, q, twist_ref) -> tuple[Any, Any]:
+        xdot = J @ dq
+        xdot_error = twist_ref - xdot
+        xddot_star = accel_ref + self.Kd @ xdot_error + self.Kp @ error
+        Jdot_qdot = self.robot.get_jacobian_derivative(q, dq)
+
+        qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
+        return qddot_task, xdot
 
 
 class SimulationLogger:
