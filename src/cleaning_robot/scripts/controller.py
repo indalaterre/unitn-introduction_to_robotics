@@ -27,9 +27,9 @@ class TaskSpaceController:
     Task-space inverse dynamics controller with null-space optimization.
     """
     
-    def __init__(self, robot_model, 
-                 Kp_pos=100.0, Kd_pos=20.0,
-                 Kp_rot=100.0, Kd_rot=20.0,
+    def __init__(self, robot_model,
+                 kp_pos=100.0, kd_pos=20.0,
+                 kp_rot=100.0, kd_rot=20.0,
                  k_null=5.0,
                  damping=1e-3,
                  use_manipulability=True):
@@ -38,10 +38,10 @@ class TaskSpaceController:
         
         Args:
             robot_model: RobotModel instance
-            Kp_pos: Position proportional gain
-            Kd_pos: Position derivative gain
-            Kp_rot: Orientation proportional gain
-            Kd_rot: Orientation derivative gain
+            kp_pos: Position proportional gain
+            kd_pos: Position derivative gain
+            kp_rot: Orientation proportional gain
+            kd_rot: Orientation derivative gain
             k_null: Null-space gain for manipulability
             damping: Damping factor for pseudoinverse
             use_manipulability: Enable/disable null-space optimization
@@ -49,8 +49,8 @@ class TaskSpaceController:
         self.robot = robot_model
         
         # Task-space gains (6x6 diagonal)
-        self.Kp = np.diag([Kp_pos, Kp_pos, Kp_pos, Kp_rot, Kp_rot, Kp_rot])
-        self.Kd = np.diag([Kd_pos, Kd_pos, Kd_pos, Kd_rot, Kd_rot, Kd_rot])
+        self.Kp = np.diag([kp_pos, kp_pos, kp_pos, kp_rot, kp_rot, kp_rot])
+        self.Kd = np.diag([kd_pos, kd_pos, kd_pos, kd_rot, kd_rot, kd_rot])
         
         # Null-space gain
         self.k_null = k_null
@@ -84,8 +84,8 @@ class TaskSpaceController:
         self.kd_posture = 40
         
         print(f"[Controller] Initialized:")
-        print(f"  Kp_pos: {Kp_pos}, Kd_pos: {Kd_pos}")
-        print(f"  Kp_rot: {Kp_rot}, Kd_rot: {Kd_rot}")
+        print(f"  Kp_pos: {kp_pos}, Kd_pos: {kd_pos}")
+        print(f"  Kp_rot: {kp_rot}, Kd_rot: {kd_rot}")
         print(f"  k_null: {k_null}")
         print(f"  Manipulability optimization: {use_manipulability}")
 
@@ -122,8 +122,8 @@ class TaskSpaceController:
         
         # Now the primary task uses the SAFE J_pinv
         qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
+
         qddot_null = np.zeros(self.robot.nq)
-        
         if self.use_manipulability:
             # Step A: Calculate Posture Correction (Pull towards Elbow-Up)
             # q_accel = Kp*(q_des - q) - Kd*dq
@@ -214,7 +214,8 @@ class SimulationLogger:
     """
     
     def __init__(self):
-        """Initialize empty log."""
+        """Initialize an empty log."""
+        self.data = {}
         self.reset()
     
     def reset(self):
@@ -371,10 +372,10 @@ def test_controller():
     # Create controller
     controller = TaskSpaceController(
         robot_model=robot,
-        Kp_pos=200.0,
-        Kd_pos=40.0,
-        Kp_rot=150.0,
-        Kd_rot=30.0,
+        kp_pos=200.0,
+        kd_pos=40.0,
+        kp_rot=150.0,
+        kd_rot=30.0,
         k_null=10.0,
         use_manipulability=True
     )
