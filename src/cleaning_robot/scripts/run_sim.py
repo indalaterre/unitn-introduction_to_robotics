@@ -410,7 +410,12 @@ def main():
                         help='Null-space gain')
     parser.add_argument('--output', type=str, default='simulation_data',
                         help='Output filename prefix')
+    parser.add_argument('--no-manipulability', action='store_true',
+                        help='Disable manipulability optimization in controller')
     args = parser.parse_args()
+    
+    # Convert no-manipulability flag to use_manipulability boolean
+    args.use_manipulability = not args.no_manipulability
     
     print("=" * 60)
     print("Cleaning Robot Simulation")
@@ -419,6 +424,7 @@ def main():
     print(f"Duration: {args.duration}s")
     print(f"Circle radius: {args.radius}m")
     print(f"Angular velocity: {args.omega} rad/s")
+    print(f'Manipulability optimization: {args.use_manipulability}')
     
     # Load robot model
     robot = RobotModel()
@@ -452,7 +458,7 @@ def main():
     # Set trajectory center based on reachable workspace
     # The arm at home extends ~0.55m in X, so center circle closer to base
     # Use a center that's reachable with the arm bent
-    circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
+    circle_center = [0.50, 0.0, 0.15]  # Fixed center within workspace
     
     # Circle start point (where the cleaning circle begins)
     circle_start = np.array([
@@ -536,7 +542,7 @@ def main():
         controller = TaskSpaceController(
             robot_model=robot,
             **controller_params,
-            use_manipulability=True
+            use_manipulability=args.use_manipulability
         )
         
         # Run ROS simulation
