@@ -205,9 +205,13 @@ class PointToPointTrajectory:
         self.R_end = np.array(R_end)
         self.duration = duration
         
-        # Compute rotation difference using log map
-        R_diff = self.R_end @ self.R_start.T
-        self.axis_angle = pin.log3(R_diff)
+        # Convert rotations to quaternions for interpolation
+        self.q_start = pin.Quaternion(self.R_start)
+        self.q_end = pin.Quaternion(self.R_end)
+        
+        # Ensure quaternions are normalized and use shortest path
+        if self.q_start.dot(self.q_end) < 0:
+            self.q_end.coeffs *= -1  # Take shortest path
     
     def _quintic_profile(self, t):
         """
@@ -245,8 +249,9 @@ class PointToPointTrajectory:
         # Interpolate position
         p = self.p_start + s * (self.p_end - self.p_start)
         
-        # Interpolate rotation using exponential map
-        R = pin.exp3(s * self.axis_angle) @ self.R_start
+        # Interpolate rotation using quaternion SLERP
+        q_interp = self.q_start.slerp(self.q_end, s)
+        R = q_interp.toRotationMatrix()
         
         return pin.SE3(R, p)
     
@@ -257,8 +262,13 @@ class PointToPointTrajectory:
         # Linear velocity
         v_linear = ds * (self.p_end - self.p_start)
         
-        # Angular velocity
-        v_angular = ds * self.axis_angle
+        # Angular velocity from quaternion derivative
+        # For SLERP: ω = 2 * q̇ * q* (where q* is quaternion conjugate)
+        q_current = self.q_start.slerp(self.q_end, s)
+        # Approximate quaternion derivative for SLERP
+        q_dot = (self.q_end - self.q_start) / self.duration * ds
+        omega_quat = 2.0 * pin.Quaternion(q_dot.coeffs) * q_current.conjugate()
+        v_angular = omega_quat.vec()  # Extract vector part (angular velocity)
         
         return np.concatenate([v_linear, v_angular])
     
@@ -269,8 +279,12 @@ class PointToPointTrajectory:
         # Linear acceleration
         a_linear = dds * (self.p_end - self.p_start)
         
-        # Angular acceleration
-        a_angular = dds * self.axis_angle
+        # Angular acceleration from quaternion second derivative
+        q_current = self.q_start.slerp(self.q_end, s)
+        # Approximate quaternion second derivative for SLERP
+        q_ddot = (self.q_end - self.q_start) / self.duration * dds
+        alpha_quat = 2.0 * pin.Quaternion(q_ddot.coeffs) * q_current.conjugate()
+        a_angular = alpha_quat.vec()  # Extract vector part (angular acceleration)
         
         return np.concatenate([a_linear, a_angular])
     
@@ -311,9 +325,13 @@ class CartesianTrajectory:
         self.t_decel = self.t_accel
         self.t_const = duration - self.t_accel - self.t_decel
         
-        # Compute rotation difference using log map
-        R_diff = self.R_end @ self.R_start.T
-        self.axis_angle = pin.log3(R_diff)
+        # Convert rotations to quaternions for interpolation
+        self.q_start = pin.Quaternion(self.R_start)
+        self.q_end = pin.Quaternion(self.R_end)
+        
+        # Ensure quaternions are normalized and use shortest path
+        if self.q_start.dot(self.q_end) < 0:
+            self.q_end.coeffs *= -1  # Take shortest path
         
         # Compute maximum velocity during constant phase
         # Total distance = area under velocity trapezoid
@@ -327,14 +345,10 @@ class CartesianTrajectory:
             self.v_max = 0.0
             self.direction = np.zeros(3)
 
-        # Angular velocity magnitude
-        axis_angle_norm = np.linalg.norm(self.axis_angle)
-        if axis_angle_norm > 1e-6:
-            self.omega_max = axis_angle_norm / (duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
-            self.angular_direction = self.axis_angle / axis_angle_norm
-        else:
-            self.omega_max = 0.0
-            self.angular_direction = np.zeros(3)
+        # Quaternion interpolation setup
+        # Store quaternion difference for angular velocity calculations
+        self.q_diff = self.q_start.conjugate() * self.q_end
+        self.total_rotation_angle = 2.0 * np.arccos(np.clip(abs(self.q_diff.w), -1.0, 1.0))
     
     def _get_velocity_profile(self, t):
         """
@@ -406,8 +420,9 @@ class CartesianTrajectory:
         # Interpolate position
         p = self.p_start + s * (self.p_end - self.p_start)
         
-        # Interpolate rotation using exponential map
-        R = pin.exp3(s * self.axis_angle) @ self.R_start
+        # Interpolate rotation using quaternion SLERP
+        q_interp = self.q_start.slerp(self.q_end, s)
+        R = q_interp.toRotationMatrix()
         
         return pin.SE3(R, p)
     
@@ -418,9 +433,19 @@ class CartesianTrajectory:
         # Linear velocity
         v_linear = v * self.direction
         
-        # Angular velocity (same profile)
-        omega_current = v / self.v_max * self.omega_max if self.v_max > 1e-6 else 0.0
-        v_angular = omega_current * self.angular_direction
+        # Angular velocity from quaternion SLERP
+        s = self._get_position_from_velocity(t)
+        q_current = self.q_start.slerp(self.q_end, s)
+        # Angular velocity magnitude based on trapezoidal profile
+        if self.total_rotation_angle > 1e-6 and self.duration > 0:
+            omega_mag = self.total_rotation_angle / (self.duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
+            omega_mag *= (v / self.v_max) if self.v_max > 1e-6 else 0.0
+            # Convert to angular velocity vector
+            q_dot = pin.Quaternion(0, *self.q_diff.vec()) * omega_mag / self.total_rotation_angle
+            omega_quat = 2.0 * q_dot * q_current.conjugate()
+            v_angular = omega_quat.vec()
+        else:
+            v_angular = np.zeros(3)
         
         return np.concatenate([v_linear, v_angular])
     
@@ -431,9 +456,19 @@ class CartesianTrajectory:
         # Linear acceleration
         a_linear = a * self.direction
         
-        # Angular acceleration (same profile)
-        alpha_current = a / self.v_max * self.omega_max if self.v_max > 1e-6 else 0.0
-        a_angular = alpha_current * self.angular_direction
+        # Angular acceleration from quaternion SLERP
+        s = self._get_position_from_velocity(t)
+        q_current = self.q_start.slerp(self.q_end, s)
+        # Angular acceleration magnitude based on trapezoidal profile
+        if self.total_rotation_angle > 1e-6 and self.duration > 0:
+            alpha_mag = self.total_rotation_angle / (self.duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
+            alpha_mag *= (a / self.v_max) if self.v_max > 1e-6 else 0.0
+            # Convert to angular acceleration vector
+            q_ddot = pin.Quaternion(0, *self.q_diff.vec()) * alpha_mag / self.total_rotation_angle
+            alpha_quat = 2.0 * q_ddot * q_current.conjugate()
+            a_angular = alpha_quat.vec()
+        else:
+            a_angular = np.zeros(3)
         
         return np.concatenate([a_linear, a_angular])
     
