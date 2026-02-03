@@ -95,7 +95,7 @@ class ROSSimulation:
         
         self.joint_pub.publish(msg)
     
-    def publish_trajectory_marker(self, trajectory, num_points=100):
+    def publish_trajectory_marker(self, num_points=100):
         """Publish trajectory visualization marker."""
         marker = Marker()
         marker.header.frame_id = 'world'
@@ -170,7 +170,7 @@ class ROSSimulation:
         
         # Publish initial markers
         self.publish_table_marker()
-        self.publish_trajectory_marker(self.trajectory)
+        self.publish_trajectory_marker()
         
         start_time = rospy.Time.now()
         
@@ -202,6 +202,7 @@ class ROSSimulation:
             
             # Publish joint states
             self.publish_joint_states(q, dq, tau)
+            self.publish_trajectory_marker()
             
             # Print progress
             if int(t * 10) % 10 == 0 and abs(t - round(t)) < self.dt:
