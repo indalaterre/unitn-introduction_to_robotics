@@ -1,13 +1,3 @@
-# Ignore common image formats
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.tif
-*.tiff
-*.svg
-
 # Ignore NumPy archive files
 *.npz
 

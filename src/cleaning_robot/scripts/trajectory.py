@@ -209,11 +209,11 @@ class PointToPointTrajectory:
         self.q_start = pin.Quaternion(self.R_start)
         self.q_end = pin.Quaternion(self.R_end)
         
-        # Ensure quaternions are normalized and use shortest path
+        # Ensure quaternions are normalized and use the shortest path
         if self.q_start.dot(self.q_end) < 0:
-            self.q_end.coeffs *= -1  # Take shortest path
+            self.q_end.coeffs *= -1  # Take the shortest path
         
-        # Compute rotation difference using log map for velocity/acceleration
+        # Compute rotation difference using the log map for velocity/acceleration
         R_diff = self.R_end @ self.R_start.T
         self.axis_angle = pin.log3(R_diff)
     
