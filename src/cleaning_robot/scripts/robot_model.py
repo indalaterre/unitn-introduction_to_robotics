@@ -28,8 +28,7 @@ class RobotModel:
             urdf_path: Path to URDF file. If None, uses default assembly.urdf
         """
         if urdf_path is None:
-            urdf_path = os.path.join(os.path.dirname(__file__), 
-                                     '../urdf/assembly.urdf')
+            urdf_path = os.path.join(os.path.dirname(__file__),  '../urdf/assembly.urdf')
         
         self.urdf_path = os.path.abspath(urdf_path)
         
@@ -127,8 +126,7 @@ class RobotModel:
         pin.computeJointJacobians(self.model, self.data, q)
         pin.updateFramePlacements(self.model, self.data)
         
-        J = pin.computeFrameJacobian(self.model, self.data, q, frame_id, reference_frame)
-        return J.copy()
+        return pin.computeFrameJacobian(self.model, self.data, q, frame_id, reference_frame)
     
     def get_jacobian_derivative(self, q, dq, frame_id=None, 
                                  reference_frame=pin.ReferenceFrame.LOCAL_WORLD_ALIGNED):
@@ -167,9 +165,8 @@ class RobotModel:
             M: (8, 8) symmetric positive definite mass matrix
         """
         M = pin.crba(self.model, self.data, q)
-        # Make symmetric (CRBA only fills upper triangle)
-        M = np.triu(M) + np.triu(M, 1).T
-        return M
+        # Make symmetric (CRBA only fills the upper triangle)
+        return np.triu(M) + np.triu(M, 1).T
     
     def get_bias_forces(self, q, dq):
         """
@@ -256,10 +253,9 @@ class RobotModel:
             Jp = J  # Full Jacobian (6x8)
         
         # w = sqrt(det(Jp * Jp^T))
-        JJT = Jp @ Jp.T
-        det_val = np.linalg.det(JJT)
+        det_val = np.linalg.det(Jp @ Jp.T)
         
-        # Add small damping for numerical stability
+        # Add a small damping for numerical stability
         if det_val < 1e-10:
             det_val = 1e-10
         
@@ -267,7 +263,7 @@ class RobotModel:
     
     def compute_manipulability_gradient(self, q, epsilon=1e-4, use_position_only=True):
         """
-        Compute gradient of manipulability w.r.t. joint angles using finite differences.
+        Compute gradient of manipulability w.r.t. the joint angles using finite differences.
         
         Args:
             q: Joint positions (8,)
@@ -291,8 +287,9 @@ class RobotModel:
             grad[i] = (w_plus - w0) / epsilon
         
         return grad
-    
-    def damped_pseudoinverse(self, J, damping=1e-3):
+
+    @staticmethod
+    def damped_pseudoinverse(J, damping=1e-3):
         """
         Compute damped pseudoinverse J# = J^T (J J^T + λ^2 I)^{-1}.
         
@@ -306,7 +303,7 @@ class RobotModel:
         m = J.shape[0]
         JJT = J @ J.T + damping**2 * np.eye(m)
         return J.T @ np.linalg.inv(JJT)
-    
+
     def null_space_projector(self, J, damping=1e-3):
         """
         Compute null-space projector N = I - J# J.
@@ -318,8 +315,8 @@ class RobotModel:
         Returns:
             N: (n, n) null-space projector
         """
-        J_pinv = self.damped_pseudoinverse(J, damping)
-        return np.eye(self.nq) - J_pinv @ J
+        J_pseudo_inv = self.damped_pseudoinverse(J, damping)
+        return np.eye(self.nq) - J_pseudo_inv @ J
     
     def clip_to_limits(self, q):
         """Clip joint positions to limits."""
@@ -331,7 +328,7 @@ class RobotModel:
     
     def check_joint_limits(self, q, margin=0.05):
         """
-        Check if configuration is within joint limits.
+        Check if the configuration is within joint limits.
         
         Args:
             q: Joint positions (8,)
@@ -402,9 +399,8 @@ class RobotModel:
             # Position error
             e_pos = target_pos - pos
             
-            # Orientation error using log map
-            R_error = target_rot @ rot.T
-            e_rot = pin.log3(R_error)
+            # Orientation error using direct matrix multiplication
+            e_rot = target_rot @ rot.T
             
             pos_err_norm = np.linalg.norm(e_pos)
             rot_err_norm = np.linalg.norm(e_rot)

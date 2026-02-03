@@ -124,6 +124,33 @@ class ROSSimulation:
         
         self.traj_marker_pub.publish(marker)
     
+    def publish_robot_trajectory_marker(self, trajectory_points):
+        """Publish actual robot trajectory in blue."""
+        if len(trajectory_points) < 2:
+            return
+        
+        marker = Marker()
+        marker.header.frame_id = 'world'
+        marker.header.stamp = rospy.Time.now()
+        marker.ns = 'robot_trajectory'
+        marker.id = 1
+        marker.type = Marker.LINE_STRIP
+        marker.action = Marker.ADD
+        
+        marker.scale.x = 0.008  # Line width (slightly thicker)
+        marker.color.r = 0.0  # No red
+        marker.color.g = 0.0  # No green  
+        marker.color.b = 1.0  # Full blue
+        marker.color.a = 1.0  # Full opacity
+        
+        # Add trajectory points
+        for pos in trajectory_points:
+            p = Point()
+            p.x, p.y, p.z = pos
+            marker.points.append(p)
+        
+        self.traj_marker_pub.publish(marker)
+    
     def publish_table_marker(self):
         """Publish table visualization."""
         marker_array = MarkerArray()
@@ -168,6 +195,9 @@ class ROSSimulation:
         q = q_init.copy()
         dq = np.zeros(self.robot.nv)
         
+        # Store actual robot trajectory points
+        robot_trajectory_points = []
+        
         # Publish initial markers
         self.publish_table_marker()
         self.publish_trajectory_marker(self.trajectory)
@@ -186,6 +216,10 @@ class ROSSimulation:
             
             # Compute control
             tau, info = self.controller.compute_control(q, dq, pose_ref, twist_ref, accel_ref)
+            
+            # Get the current tool pose and store trajectory point
+            current_pose, _ = self.robot.get_tool_pose(q)
+            robot_trajectory_points.append(current_pose.translation.copy())
             
             # Log
             self.logger.log(t, q, dq, tau, info, phase)
@@ -210,6 +244,10 @@ class ROSSimulation:
                       f"manip={info['manipulability']:.4f}")
             
             self.rate.sleep()
+        
+        # Publish the actual robot trajectory in blue
+        print("[ROSSimulation] Publishing robot trajectory in blue...")
+        self.publish_robot_trajectory_marker(robot_trajectory_points)
         
         print("[ROSSimulation] Complete")
         return self.logger
@@ -242,6 +280,9 @@ class StandaloneSimulation:
         q = q_init.copy()
         dq = np.zeros(self.robot.nv)
         
+        # Store actual robot trajectory points
+        robot_trajectory_points = []
+        
         num_steps = int(duration / self.dt)
         
         for i in range(num_steps):
@@ -252,6 +293,10 @@ class StandaloneSimulation:
             
             # Compute control
             tau, info = self.controller.compute_control(q, dq, pose_ref, twist_ref, accel_ref)
+            
+            # Get the current tool pose and store the trajectory point
+            current_pose, _ = self.robot.get_tool_pose(q)
+            robot_trajectory_points.append(current_pose.translation.copy())
             
             # Log
             self.logger.log(t, q, dq, tau, info, phase)
@@ -272,7 +317,7 @@ class StandaloneSimulation:
                       f"rot_err={info['error_rot_norm']:.4f}rad | "
                       f"manip={info['manipulability']:.4f} | phase={phase}")
         
-        print("[StandaloneSimulation] Complete")
+        print(f"[StandaloneSimulation] Complete - Collected {len(robot_trajectory_points)} trajectory points")
         return self.logger
 
 

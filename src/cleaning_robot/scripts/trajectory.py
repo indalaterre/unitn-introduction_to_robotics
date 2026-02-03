@@ -584,15 +584,14 @@ def compute_pose_error(pose_current, pose_desired):
         
     Returns:
         e_pos: (3,) position error
-        e_rot: (3,) orientation error (axis-angle from log map)
+        e_rot: (3,3) orientation error matrix (R_des * R_cur^T)
     """
     # Position error
     e_pos = pose_desired.translation - pose_current.translation
     
-    # Orientation error using SO(3) log map
-    # e_R = log(R_des * R_cur^T)
-    R_error = pose_desired.rotation @ pose_current.rotation.T
-    e_rot = pin.log3(R_error)
+    # Orientation error using direct matrix multiplication
+    # e_R = R_des * R_cur^T
+    e_rot = pose_desired.rotation @ pose_current.rotation.T
     
     return e_pos, e_rot
 
