@@ -102,17 +102,14 @@ class TaskSpaceController:
         error = np.concatenate([e_pos, e_rot])
         J = self.robot.get_jacobian(q)
 
-        # <--- FIX 2: CALCULATE DAMPING FIRST (Before Primary Task)
         # Previously, you calculated this too late. Now we do it first.
         manip = self.robot.compute_manipulability(q, use_position_only=True)
-        manip_threshold = .06
+        current_damping = self.damping
         
         # Dynamic Damping: Increase damping progressively as manipulability drops
-        if manip < manip_threshold:
+        if manip < 0.06:
             # More aggressive damping increase starting earlier
-            current_damping = self.damping + (1 - (manip / manip_threshold) ** 2) * .01
-        else:
-            current_damping = self.damping
+            current_damping = self.damping + (0.06 - manip) * 50.0
             
         # Create the SAFE Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
@@ -125,8 +122,6 @@ class TaskSpaceController:
         
         # Now the primary task uses the SAFE J_pinv
         qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
-        
-        # --- FIX 3: UNIFIED SECONDARY TASK (Posture + Manipulability) ---
         qddot_null = np.zeros(self.robot.nq)
         
         if self.use_manipulability:
@@ -145,11 +140,6 @@ class TaskSpaceController:
 
             # Step C: Project EVERYTHING into Null Space at once
             N = self.robot.null_space_projector(J, current_damping)  # Use same damping as pseudoinverse
-
-            max_grad = 5.0
-            norm_grad = np.linalg.norm(qddot_secondary)
-            if norm_grad > max_grad:
-                qddot_secondary *= (max_grad / norm_grad)
                 
             qddot_null_raw = N @ qddot_secondary
 

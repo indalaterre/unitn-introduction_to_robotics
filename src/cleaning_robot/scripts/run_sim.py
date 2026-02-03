@@ -424,11 +424,11 @@ def main():
     }
     
     # Controller parameters - high gains for accurate tracking
-    kp_approach = 400
-    kd_approach = 2 * np.sqrt(kp_approach) + 5
+    kp_approach = 800
+    kd_approach = 2 * np.sqrt(kp_approach)
 
-    kp_rotation = 300
-    kd_rotation = 2 * np.sqrt(kp_rotation) + 5
+    kp_rotation = 600
+    kd_rotation = 2 * np.sqrt(kp_rotation)
     controller_params = {
         'Kp_pos': kp_approach,
         'Kd_pos': kd_approach,
@@ -462,7 +462,7 @@ def main():
         trajectory = CleaningTrajectory(
             robot_model=robot,
             q_init=q_init,
-            use_quintic=False,
+            use_quintic=True,
             **trajectory_params
         )
         
@@ -485,6 +485,7 @@ def main():
         trajectory = CleaningTrajectory(
             robot_model=robot,
             q_init=q_init,
+            use_quintic=True,
             **trajectory_params
         )
         

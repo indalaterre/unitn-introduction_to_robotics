@@ -76,14 +76,10 @@ class CircularTrajectory:
         Returns:
             pose: pinocchio.SE3 pose
         """
-        theta = self.omega * t
-        
-        # Position on the circle
-        p = self.center.copy()
-        p[0] += self.radius * np.cos(theta)
-        p[1] += self.radius * np.sin(theta)
-        
-        return pin.SE3(self.R_desired, p)
+
+        pos_reference = self.get_position_reference(t)
+        rot_reference = self.get_orientation_reference(t)
+        return pin.SE3(rot_reference, pos_reference)
     
     def get_position_reference(self, t):
         """
@@ -231,9 +227,14 @@ class PointToPointTrajectory:
         tau = t / T
         
         # s = 10τ³ - 15τ⁴ + 6τ⁵
-        s = 10 * tau**3 - 15 * tau**4 + 6 * tau**5
-        ds = (30 * tau**2 - 60 * tau**3 + 30 * tau**4) / T
-        dds = (60 * tau - 180 * tau**2 + 120 * tau**3) / T**2
+        tau2 = tau**2
+        tau3 = tau**3
+        tau4 = tau3 * tau
+        tau5 = tau4 * tau
+
+        s = 10 * tau3 - 15 * tau4 + 6 * tau5
+        ds = (30 * tau2 - 60 * tau3 + 30 * tau4) / T
+        dds = (60 * tau - 180 * tau2 + 120 * tau3) / T**2
         
         return s, ds, dds
     
