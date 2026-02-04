@@ -343,7 +343,7 @@ def print_summary(data):
 
 def main():
     parser = argparse.ArgumentParser(description='Plot simulation results')
-    parser.add_argument('data_file', nargs='?', default='simulation_data.npz',
+    parser.add_argument('--data_file', nargs='?', default='simulation_data.npz',
                         help='Simulation data file (.npz)')
     parser.add_argument('--compare', nargs=2, metavar=('WITH', 'WITHOUT'),
                         help='Compare two simulation files')
