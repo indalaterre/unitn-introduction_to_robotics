@@ -62,8 +62,7 @@ def plot_tracking_errors(data, save_prefix='results'):
     time = data['time']
     
     # Create figure with 2 subplots for tracking errors
-    fig, axes = plt.subplots(2, 1, figsize=(10, 8))
-    fig.suptitle('Tracking Error Analysis', fontsize=14, fontweight='bold')
+    fig, axes = plt.subplots(2, 1, figsize=(10, 10))
     
     # Find approach phase end
     approach_end_time = _get_approach_end_time(data)
@@ -86,8 +85,8 @@ def plot_tracking_errors(data, save_prefix='results'):
     # Add statistics text
     mean_err = np.mean(data['error_pos_norm']) * 1000
     max_err = np.max(data['error_pos_norm']) * 1000
-    ax.text(0.98, 0.95, f'Mean: {mean_err:.2f} mm\nMax: {max_err:.2f} mm',
-            transform=ax.transAxes, verticalalignment='top', horizontalalignment='right',
+    ax.text(0.02, 0.98, f'Mean: {mean_err:.2f} mm\nMax: {max_err:.2f} mm',
+            transform=ax.transAxes, verticalalignment='top', horizontalalignment='left',
             fontsize=9, bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.7))
     
     # Plot 2: Orientation Error
@@ -108,8 +107,8 @@ def plot_tracking_errors(data, save_prefix='results'):
     # Add statistics text
     mean_err_rot = np.mean(np.rad2deg(data['error_rot_norm']))
     max_err_rot = np.max(np.rad2deg(data['error_rot_norm']))
-    ax.text(0.98, 0.95, f'Mean: {mean_err_rot:.2f}°\nMax: {max_err_rot:.2f}°',
-            transform=ax.transAxes, verticalalignment='top', horizontalalignment='right',
+    ax.text(0.02, 0.98, f'Mean: {mean_err_rot:.2f}°\nMax: {max_err_rot:.2f}°',
+            transform=ax.transAxes, verticalalignment='top', horizontalalignment='left',
             fontsize=9, bbox=dict(boxstyle='round', facecolor='lightcoral', alpha=0.7))
     
     plt.tight_layout()
@@ -135,7 +134,6 @@ def plot_performance_metrics(data, save_prefix='results'):
     
     # Create figure with 2 subplots for performance metrics
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))
-    fig.suptitle('Performance Metrics', fontsize=14, fontweight='bold')
     
     # Find approach phase end
     approach_end_time = _get_approach_end_time(data)
@@ -157,8 +155,8 @@ def plot_performance_metrics(data, save_prefix='results'):
     # Add statistics
     mean_manip = np.mean(data['manipulability'])
     min_manip = np.min(data['manipulability'])
-    ax.text(0.02, 0.95, f'Mean: {mean_manip:.4f}\nMin: {min_manip:.4f}',
-            transform=ax.transAxes, verticalalignment='top',
+    ax.text(0.89, 0.89, f'Mean: {mean_manip:.4f}\nMin: {min_manip:.4f}',
+            transform=ax.transAxes,
             fontsize=9, bbox=dict(boxstyle='round', facecolor='lightgreen', alpha=0.7))
     ax.legend(loc='best', fontsize=9)
     
@@ -432,7 +430,7 @@ def _plot_comparison_tracking_errors(data_with, data_without, save_prefix):
     time_with = data_with['time']
     time_without = data_without['time']
     
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8))
+    fig, axes = plt.subplots(2, 1, figsize=(12, 10))
     fig.suptitle('Tracking Error Comparison: With vs Without Manipulability Optimization', 
                  fontsize=13, fontweight='bold')
     
