@@ -1,3 +1,6 @@
 # Ignore NumPy archive files
 *.npz
 
+*.aux
+*.log
+*.synctex.gz
