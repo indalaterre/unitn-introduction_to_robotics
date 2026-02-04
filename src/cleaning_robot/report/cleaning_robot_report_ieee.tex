@@ -136,7 +136,9 @@ For pose control, we separate position and orientation errors:
 \end{equation}
 where $\log(\cdot)$ denotes the SO(3) logarithm map for orientation error.
 
-\textbf{Implementation Link:} I compute position error as \texttt{pose\_d[:3] - pose[:3]} and orientation error using \texttt{pinocchio.log3(pose\_d[3:], pose[3:])} in my \texttt{TaskSpaceController} class.
+\textbf{Why the Log Map is Critical:} Orientation matrices belong to the non-linear space $SO(3)$, where simple subtraction $\mathbf{R}_d - \mathbf{R}$ is mathematically meaningless. The logarithm map $\log: SO(3) \rightarrow \mathbb{R}^3$ converts rotation matrices to axis-angle vectors in the tangent space, providing: (i) a proper metric for orientation distance, (ii) linearization suitable for PD control, (iii) intuitive physical meaning (rotation axis and angle), and (iv) avoidance of singularities inherent to Euler angle representations. This enables standard control theory to be applied to the challenging problem of orientation control.
+
+\textbf{Implementation Link:} I compute position error as \texttt{pose\_desired.translation - pose\_current.translation} and orientation error using \texttt{pinocchio.log3(R\_desired @ R\_current.T)} where the rotation error matrix is computed before applying the SO(3) logarithm map.
 
 \subsection{Inverse Dynamics Control}
 The task-space inverse dynamics controller computes the required joint accelerations:
@@ -226,9 +228,6 @@ The interpolated pose during approach is:
 \end{equation}
 
 \textbf{Implementation Link:} I implement this in my \texttt{PointToPointTrajectory} class using quintic polynomial coefficients and blend it with the circular trajectory in my \texttt{CleaningTrajectory} class, which manages the complete approach + cleaning motion sequence.
-
-\subsection{Approach Phase}
-A smooth quintic polynomial trajectory connects the initial configuration to the circle start point over 3 seconds, ensuring continuous position, velocity, and acceleration profiles.
 
 \section{Implementation and Results}
 
