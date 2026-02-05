@@ -29,7 +29,7 @@ The challenge for this project lies in designing a control system that can:
 \end{itemize}
 
 \subsection{System Overview}
-My solution employs an 8-DoF redundant manipulator combining: (i) 2-DoF Pan-Tilt Platform for additional workspace and mobility, (ii) 6-DoF Unitree Z1 Arm for precise manipulation capabilities, (iii) Task-Space Controller for accurate pose tracking, and (iv) Null-Space Optimization for manipulability maximization using redundancy.
+This solution employs an 8-DoF redundant manipulator combining: (i) 2-DoF Pan-Tilt Platform for additional workspace and mobility, (ii) 6-DoF Unitree Z1 Arm for precise manipulation capabilities, (iii) Task-Space Controller for accurate pose tracking, and (iv) Null-Space Optimization for manipulability maximization using redundancy.
 
 The robot executes a horizontal circular trajectory (radius 0.20 m) at constant height above the table, with the tool z-axis maintained perpendicular to the surface for effective cleaning.
 
@@ -51,7 +51,7 @@ The joint vector $\mathbf{q} \in \mathbb{R}^8$ is defined as:
 \end{equation}
 where $q_0, q_1$ are platform joints and $q_2$ through $q_7$ are Z1 arm joints.
 
-\textbf{Implementation Link:} This structure is defined in my URDF file \texttt{assembly.urdf} and loaded using \texttt{pinocchio.buildModelFromUrdf()} in \texttt{robot\_model.py}.
+\textbf{Implementation Link:} This structure is defined in URDF file \texttt{assembly.urdf} and loaded using \texttt{pinocchio.buildModelFromUrdf()} in \texttt{robot\_model.py}.
 
 \subsection{Forward Kinematics}
 The forward kinematics function maps joint positions to end-effector pose:
@@ -88,7 +88,7 @@ The bias forces combine Coriolis and gravity terms:
 \mathbf{h}(\mathbf{q}, \dot{\mathbf{q}}) = \mathbf{C}(\mathbf{q}, \dot{\mathbf{q}})\dot{\mathbf{q}} + \mathbf{g}(\mathbf{q})
 \end{equation}
 
-\textbf{Implementation Link:} I compute all dynamic quantities using Pinocchio: \texttt{pinocchio.crba} for the mass matrix, \texttt{pinocchio.nonLinearEffects} for bias forces, and \texttt{pinocchio.computeAllTerms} for efficient batch computation in my \texttt{RobotModel} class.
+\textbf{Implementation Link:} I compute all dynamic quantities using Pinocchio: \texttt{pinocchio.crba} for the mass matrix, \texttt{pinocchio.nonLinearEffects} for bias forces, and \texttt{pinocchio.computeAllTerms} for efficient batch computation in \texttt{RobotModel} class.
 
 \section{Manipulability Analysis}
 
@@ -115,12 +115,11 @@ To optimize manipulability, the controller computes its gradient with respect to
 
 Using finite differences for numerical computation:
 \begin{equation}
-\frac{\partial w}{\partial q_i} \approx \frac{w(\mathbf{q} + \epsilon\mathbf{e}_i) - w(\mathbf{q})}{\epsilon}
+\frac{\partial w}{\partial q_i} \approx \frac{w(\mathbf{q} + \epsilon) - w(\mathbf{q})}{\epsilon}
 \end{equation}
-where $\epsilon$ is a small perturbation and $\mathbf{e}_i$ is the $i$-th unit vector.
-This allows to evaluate how a small perturbation on a joint impact the whole robot system.
+where $\epsilon$ is a small perturbation on \textit{i}-th joint that impacts the whole robot system.
 
-\textbf{Implementation Link:} I implement this gradient computation in my \texttt{compute\_manipulability\_gradient()} method using a perturbation value of $\epsilon = 1e-4$
+\textbf{Implementation Link:} I implement this gradient computation in \texttt{compute\_manipulability\_gradient()} method using a perturbation value of $\epsilon = 1e-4$
 
 \section{Task-Space Control Design}
 
@@ -136,14 +135,12 @@ For pose control, we separate position and orientation errors:
 \end{equation}
 where $\log(\cdot)$ denotes the SO(3) logarithm map for orientation error.
 
-\textbf{Why the Log Map is Critical:} Orientation matrices belong to the non-linear space $SO(3)$, where simple subtraction $\mathbf{R}_d - \mathbf{R}$ is mathematically meaningless. The logarithm map $\log: SO(3) \rightarrow \mathbb{R}^3$ converts rotation matrices to axis-angle vectors in the tangent space, providing: (i) a proper metric for orientation distance, (ii) linearization suitable for PD control, (iii) intuitive physical meaning (rotation axis and angle), and (iv) avoidance of singularities inherent to Euler angle representations. This enables standard control theory to be applied to the challenging problem of orientation control.
-
 \textbf{Implementation Link:} I compute position error as \texttt{pose\_desired.translation - pose\_current.translation} and orientation error using \texttt{pinocchio.log3(R\_desired @ R\_current.T)} where the rotation error matrix is computed before applying the SO(3) logarithm map.
 
 \subsection{Inverse Dynamics Control}
 The task-space inverse dynamics controller computes the required joint accelerations:
 \begin{equation}
-\ddot{\mathbf{q}} = \mathbf{J}^\#(\mathbf{q})\left[\ddot{\mathbf{x}}_d + \mathbf{K}_d(\dot{\mathbf{x}}_d - \dot{\mathbf{x}}) + \mathbf{K}_p\mathbf{e} - \dot{\mathbf{J}}\dot{\mathbf{q}}\right]
+\ddot{\mathbf{q}} = \mathbf{J}^\#(\mathbf{q})\left[\ddot{\mathbf{x}}_d + \mathbf{K}_d\dot{e} + \mathbf{K}_p\mathbf{e} - \dot{\mathbf{J}}\dot{\mathbf{q}}\right]
 \end{equation}
 
 where $\mathbf{J}^\#$ is the damped pseudoinverse:
@@ -153,7 +150,7 @@ where $\mathbf{J}^\#$ is the damped pseudoinverse:
 
 The control gains $\mathbf{K}_p, \mathbf{K}_d \in \mathbb{R}^{6 \times 6}$ are diagonal matrices providing PD control in task space.
 
-\textbf{Implementation Link:} I implement this in my \texttt{compute\_control()} method with adaptive damping $\lambda$ and gain scheduling. The damped pseudoinverse uses my \texttt{damped\_pseudo\_inverse()} function with numerical stability checks.
+\textbf{Implementation Link:} I implement this in \texttt{calculate\_primary\_task} method invoked by the control loop. $\mathbf{J}^\#$ is calculated by \texttt{damped\_pseudo\_inverse} method with adaptive damping $\lambda$ based on the current manipulability condition (higher factor for lower manipulabilities).
 
 \subsection{Null-Space Optimization}
 For redundant robots ($n > m$, where $n=8$ DOFs and $m=6$ task dimensions), we exploit the null space to achieve secondary objectives without affecting the primary task.
@@ -173,7 +170,7 @@ For manipulability maximization:
 \ddot{\mathbf{q}}_{\text{null}} = k_{\text{null}}\mathbf{N}\nabla w(\mathbf{q})
 \end{equation}
 
-\textbf{Implementation Link:} I implement null-space optimization in my controller with gain $k_{\text{null}} = 2.0$ and dynamic adjustment based on tracking performance. The null-space projector is computed using \texttt{numpy.eye(8) - J\_pinv @ J}.
+\textbf{Implementation Link:} I implement null-space optimization in controller with gain $k_{\text{null}} = 2.0$ and dynamic adjustment based on tracking performance. The null-space projector is computed using \texttt{numpy.eye(8) - J\_pinv @ J}.
 
 \subsection{Complete Control Law}
 The final control torque is computed using inverse dynamics:
@@ -181,39 +178,43 @@ The final control torque is computed using inverse dynamics:
 \boldsymbol{\tau} = \mathbf{M}(\mathbf{q})\ddot{\mathbf{q}} + \mathbf{h}(\mathbf{q}, \dot{\mathbf{q}})
 \end{equation}
 
-\textbf{Implementation Link:} I compute the final torque in my \texttt{TaskSpaceController.compute\_control()} method using \texttt{self.robot.mass\_matrix(q) @ ddq + self.robot.bias\_forces(q, dq)} and apply torque limits for safety.
+\textbf{Implementation Link:} I compute the final torque in \texttt{compute\_control} method using \texttt{self.robot.mass\_matrix(q) @ ddq + self.robot.bias\_forces(q, dq)} and apply torque limits for safety.
 
 \section{Trajectory Generation}
 
-\subsection{Circular Cleaning Trajectory}
-The cleaning task requires tracking a horizontal circle with constant height. The trajectory parameters are: (i) Center: $\mathbf{p}_c = [0.35, 0.0, 0.05]$ m, (ii) Radius: $r = 0.20$ m, (iii) Angular velocity: $\omega = 0.4$ rad/s, (iv) Height above table: $z = 0.05$ m.
+\subsection{Circular Trajectory}
+The task requires tracking a horizontal circle with constant height. The trajectory parameters are:
+
+\begin{itemize}
+	\item Center: $\mathbf{p}_c = [0.35, 0.0, 0.05]$ m
+	\item Radius: $r = 0.20$ m
+	\item Angular velocity: $\omega = 1$ rad/s
+	\item Height above table: $z = 0.05$ m
+\end{itemize}
 
 The position reference is:
 \begin{equation}
 \mathbf{p}_d(t) = \mathbf{p}_c + \begin{bmatrix} r\cos(\omega t) \\ r\sin(\omega t) \\ 0 \end{bmatrix}
 \end{equation}
 
-The orientation reference maintains the tool perpendicular to the table:
+The orientation reference maintains the tool perpendicular to the table. To keep the Z-axis pointing downwards it rotates the end-effector on the X-axis by 180° ($\pi$ rad)
 \begin{equation}
-\mathbf{R}_d = \begin{bmatrix} 1 & 0 & 0 \\ 0 & -1 & 0 \\ 0 & 0 & -1 \end{bmatrix}
+\mathbf{R}_d = \begin{bmatrix} 1 & 0 & 0 \\ 0 & cos(\pi) & -sin(\pi) \\ 0 & sin(\pi) & cos(\pi) \end{bmatrix}
 \end{equation}
 
-\textbf{Implementation Link:} I implement this in my \texttt{CircularTrajectory} class with methods \texttt{get\_pose()}, \texttt{get\_twist()}, and \texttt{get\_acceleration()} that return the complete reference trajectory at any time $t$.
-
-\subsection{Trajectory Derivatives}
-The velocity and acceleration profiles are obtained analytically:
+The velocity and acceleration profiles are obtained analytically from the position first and second order derivatives:
 
 Velocity:
 \begin{equation}
-\dot{\mathbf{p}}_d(t) = \begin{bmatrix} -r\omega\sin(\omega t) \\ r\omega\cos(\omega t) \\ 0 \end{bmatrix}
+	\dot{\mathbf{p}}_d(t) = \begin{bmatrix} -r\omega\sin(\omega t) \\ r\omega\cos(\omega t) \\ 0 \end{bmatrix}
 \end{equation}
 
 Acceleration:
 \begin{equation}
-\ddot{\mathbf{p}}_d(t) = \begin{bmatrix} -r\omega^2\cos(\omega t) \\ -r\omega^2\sin(\omega t) \\ 0 \end{bmatrix}
+	\ddot{\mathbf{p}}_d(t) = \begin{bmatrix} -r\omega^2\cos(\omega t) \\ -r\omega^2\sin(\omega t) \\ 0 \end{bmatrix}
 \end{equation}
 
-\textbf{Implementation Link:} These analytical derivatives are computed in my \texttt{CircularTrajectory} class using \texttt{numpy} operations for efficiency and accuracy.
+\textbf{Implementation Link:} I implement these concepts in \texttt{CircularTrajectory} class with methods \texttt{get\_pose()}, \texttt{get\_twist()}, and \texttt{get\_acceleration()} that return the complete reference trajectory at any time $t$.
 
 \subsection{Approach Phase}
 To smoothly transition from the initial configuration to the circular trajectory, I use a quintic polynomial trajectory:
@@ -224,44 +225,58 @@ where $s(t) \in [0,1]$ is the interpolation parameter with zero velocity and acc
 
 The interpolated pose during approach is:
 \begin{equation}
-\mathbf{x}_d(t) = (1-s(t))\mathbf{x}_{\text{start}} + s(t)\mathbf{x}_{\text{circle\_start}}
+\mathbf{x}_d(t) = \mathbf{x}_{\text{start}} + s(t) (\mathbf{x}_{\text{circle}} - \mathbf{x}_{\text{start}})
 \end{equation}
 
-\textbf{Implementation Link:} I implement this in my \texttt{PointToPointTrajectory} class using quintic polynomial coefficients and blend it with the circular trajectory in my \texttt{CleaningTrajectory} class, which manages the complete approach + cleaning motion sequence.
+The rotation interpolation is performed using the \textbf{SLERP} (Spherical Linear Interpolation) to ensure smooth orientation transitions with constant angular velocity along the shortest path on the unit sphere.
+
+While trapezoidal velocity profiles are commonly used for their simplicity, the quintic polynomial trajectory is preferred because it eliminates \textit{jerk} (discontinuities in acceleration) at the start and end points. The trapezoidal profile creates abrupt acceleration changes at velocity transitions, whereas the quintic polynomial ensures continuous acceleration with zero jerk at boundaries, resulting in smoother robot motion and reduced mechanical stress.
+
+\textbf{Implementation Link:} I implement this in \texttt{PointToPointTrajectory} class using quintic polynomial coefficients and blend it with the circular trajectory in \texttt{CleaningTrajectory} class, which manages the complete approach + cleaning motion sequence.
 
 \section{Implementation and Results}
 
 \subsection{System Architecture}
-The implementation uses Python with the Pinocchio robotics library for kinematic and dynamic computations. The modular structure includes: (i) \texttt{robot\_model.py}: URDF loading, FK/IK, dynamics, (ii) \texttt{controller.py}: Task-space controller with null-space optimization, (iii) \texttt{trajectory.py}: Reference trajectory generation, (iv) \texttt{run\_sim.py}: Main simulation loop.
+The implementation uses Python 3.8 with the Pinocchio robotics library for kinematic and dynamic computations, running on Ubuntu 20.04 in a VirtualBox VM for compatibility. The modular architecture consists of:
 
-\subsection{Simulation Parameters}
-\begin{table}[h]
+\begin{itemize}
+	\item \texttt{robot\_model.py}: URDF loading, forward/inverse kinematics, dynamics
+	\item \texttt{controller.py}: Task-space controller with null-space optimization
+	\item \texttt{trajectory.py}: Reference trajectory generation
+	\item \texttt{run\_sim.py}: Main simulation loop and data logging
+\end{itemize}
+
+\begin{table}[H]
 \centering
 \caption{Controller Parameters}
 \begin{tabular}{lc}
 \toprule
 Parameter & Value \\
 \midrule
-Position gain $K_{p,pos}$ & 200.0 \\
-Derivative gain $K_{d,pos}$ & 40.0 \\
-Orientation gain $K_{p,rot}$ & 150.0 \\
-Derivative gain $K_{d,rot}$ & 30.0 \\
-Null-space gain $k_{null}$ & 10.0 \\
-Damping factor $\lambda$ & $10^{-3}$ \\
+Approach gain $K_{p,pos}$ & 800.0 \\
+Approach derivative gain $K_{d,pos}$ & 56.57 \\
+Orientation gain $K_{p,rot}$ & 600.0 \\
+Derivative gain $K_{d,rot}$ & 48.99 \\
+Null-space gain $k_{null}$ & 5.0 \\
+Damping factor $\lambda$ & 0.1 \\
 Simulation time step & 1 ms \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{Performance Metrics}
-The controller performance is evaluated using: (i) Position tracking error: $\|\mathbf{e}_p\|$, (ii) Orientation tracking error: $\|\mathbf{e}_o\|$, (iii) Manipulability improvement: $\Delta w = w_{opt} - w_{baseline}$, (iv) Joint torque requirements: $\|\boldsymbol{\tau}\|$.
-
 \subsection{Results and Visualization}
 
 \subsubsection{Trajectory Tracking Performance}
-The trajectory tracking performance is evaluated through quantitative metrics and visual analysis. Fig.~\ref{fig:trajectory_3d} shows the 3D trajectory comparison between reference and actual end-effector paths, demonstrating high-fidelity tracking with the null-space optimization enabled.
+The trajectory tracking performance is evaluated through quantitative metrics and visual analysis. Fig.~\ref{fig:robot_main} shows the 3D trajectory comparison between reference and actual end-effector paths, demonstrating a good tracking with the null-space optimization enabled and the orientation requirement for the end-effector.
 
-The top-view trajectory in Fig.~\ref{fig:trajectory_xy} reveals precise circular tracking with minimal deviation from the desired 20 cm radius path. The blue trajectory (actual robot motion) closely follows the green reference trajectory, validating the controller's accuracy.
+The top-view trajectory in Fig.~\ref{fig:trajectory_xy} reveals circular tracking with some deviation from the desired 20 cm radius path. The blue trajectory (actual robot motion) closely follows the green reference trajectory, increasing the error close to singularity zone.
+
+\begin{figure}[h]
+	\centering
+	\includegraphics[width=0.7\columnwidth]{images/manipulability.png}
+	\caption{Final robot trajectory with manipulability optimization}
+	\label{fig:robot_main}
+\end{figure}
 
 \begin{figure}[h]
 	\centering
@@ -278,39 +293,29 @@ The top-view trajectory in Fig.~\ref{fig:trajectory_xy} reveals precise circular
 \end{figure}
 
 \subsubsection{Tracking Error Analysis}
-Fig.~\ref{fig:tracking_errors} presents the time evolution of position and orientation tracking errors. The position error remains consistently below 2 mm, while orientation error stays under 0.02 rad, demonstrating excellent tracking performance throughout the cleaning cycle.
-
+Fig.~\ref{fig:tracking_errors} presents the time evolution of position and orientation tracking errors. The position error remains consistently below 2 mm (with some spikes close to singularity zones), while orientation error stays under 0.22 degrees.
 \begin{figure}[h]
 	\centering
-	\includegraphics[width=\columnwidth]{images/tracking_errors.png}
+	\includegraphics[width=0.9\columnwidth]{images/tracking_errors.png}
 	\caption{Position and orientation tracking errors over time}
 	\label{fig:tracking_errors}
 \end{figure}
 
 \subsubsection{Manipulability Optimization}
-The effectiveness of null-space optimization is clearly demonstrated in Fig.~\ref{fig:manipulability}. With manipulability optimization, the robot maintains healthy manipulability values (0.06-0.07) throughout the trajectory, while the baseline system experiences dramatic drops to near-singular configurations (0.02-0.03).
+The effectiveness of null-space optimization is clearly demonstrated in Fig.~\ref{fig:joint_torques}. With manipulability optimization, the robot maintains healthy manipulability values (0.06-0.07) throughout the trajectory, while the baseline system experiences dramatic drops to near-singular configurations (0.02-0.03).
 
 \subsubsection{Joint Torque Analysis}
 Fig.~\ref{fig:joint_torques} shows the joint torque requirements for all 8 DOFs during the cleaning motion. The torques remain within safe limits, with the platform joints (0-1) and shoulder/elbow joints (3-4) carrying the primary load due to their significant contribution to end-effector positioning.
 
 \begin{figure}[h]
 	\centering
-	\includegraphics[width=\columnwidth]{images/joint_torques.png}
-	\caption{Joint torques for all 8 DOFs during cleaning motion}
+	\includegraphics[width=\columnwidth]{images/performance.png}
+	\caption{Robot manipulability and joint torques for all 8 DOFs}
 	\label{fig:joint_torques}
 \end{figure}
 
-\subsubsection{Comparative Simulation Results}
-The dramatic performance difference between optimized and non-optimized systems is demonstrated through direct visual comparison. Fig.~\ref{fig:screenshot_with_manip} shows stable circular tracking with manipulability optimization, where the robot maintains consistent tool orientation and smooth motion throughout the cleaning trajectory.
-
-\begin{figure}[h]
-	\centering
-	\includegraphics[width=\columnwidth]{images/manipulability.png}
-	\caption{Robot motion with manipulability optimization - stable tracking}
-	\label{fig:screenshot_with_manip}
-\end{figure}
-
-In contrast, Fig.~\ref{fig:screenshot_without_manip} reveals catastrophic tracking failure without manipulability optimization. The robot configuration drifts toward kinematic singularities, leading to complete loss of tracking capability and tool orientation control.
+\subsubsection{The role of manipulability}
+Fig.~\ref{fig:screenshot_without_manip} reveals the catastrophic tracking failure without manipulability optimization. The robot configuration drifts toward kinematic singularities, leading to complete loss of tracking capability and tool orientation control.
 
 \begin{figure}[h]
 	\centering
@@ -329,43 +334,19 @@ The performance degradation without null-space optimization manifests through se
     \item \textbf{Control Instability}: Pseudoinverse singularity prevents valid joint commands
 \end{itemize}
 
-Comparing Fig.~\ref{fig:screenshot_with_manip} and Fig.~\ref{fig:screenshot_without_manip} clearly demonstrates this phenomenon: the optimized system maintains stable circular tracking throughout the entire cleaning cycle, while the non-optimized system suffers catastrophic failure near singular configurations, making it unsuitable for practical cleaning applications.
-
-\section{Discussion}
-
-\subsection{Redundancy Resolution Benefits}
-The 8-DoF structure provides significant advantages: (i) Enhanced Workspace: Platform joints extend reachable workspace, (ii) Singularity Avoidance: Redundant DOFs allow singularity escape, (iii) Optimization Opportunities: Null space enables secondary objectives, (iv) Improved Conditioning: Better manipulability throughout trajectory.
-
-\subsection{Manipulability Optimization Results}
-The null-space optimization achieves: (i) 10-30\% manipulability improvement compared to baseline, (ii) More uniform joint configuration distribution, (iii) Reduced sensitivity to singular configurations, (iv) Better force transmission capabilities.
-
-\subsection{Control Performance}
-The task-space controller demonstrates: (i) Position error $<$ 5 mm (steady-state), (ii) Orientation error $<$ 2° (steady-state), (iii) Smooth torque profiles within actuator limits, (iv) Robust performance during approach and cleaning phases.
-
-\subsection{Computational Considerations}
-Real-time implementation requires: (i) Efficient Jacobian computation (Pinocchio), (ii) Numerically stable pseudoinverse with damping, (iii) Finite-difference gradient computation for manipulability, (iv) 1 kHz control loop for smooth motion.
+Comparing Fig.~\ref{fig:robot_main} and Fig.~\ref{fig:screenshot_without_manip} clearly demonstrates this phenomenon: the optimized system maintains stable circular tracking throughout the entire cleaning cycle, while the non-optimized system suffers catastrophic failure near singular configurations, making it unsuitable for practical cleaning applications.
 
 \section{AI Usage}
-Throughout my project, artificial intelligence tools were utilized to enhance both my theoretical understanding of class lectures and practical implementation. AI assistance was instrumental in my study of advanced robotics concepts including redundant manipulator theory, task-space control principles, and singularity analysis. The AI guidance helped me identify optimal implementation approaches, particularly the application of Yoshikawa's manipulability measures for redundancy resolution and the selection of quintic polynomial trajectories for smooth approach phase. This AI-enhanced learning process enabled my deeper comprehension of complex mathematical foundations and their practical applications in robotic control systems, ultimately leading to my more informed design decisions and effective implementation strategies.
+Throughout my project, artificial intelligence tools were utilized to enhance both my theoretical understanding of class lectures and practical implementation. AI assistance was instrumental in my study of robotics concepts from lectures including redundant manipulator theory, task-space control principles, and singularity analysis. The AI guidance helped me identify optimal implementation approaches, particularly the application of Yoshikawa's manipulability measures for redundancy resolution and the selection of quintic polynomial trajectories for smooth approach phase. This AI-enhanced learning process enabled my deeper comprehension of complex mathematical foundations and their practical applications in robotic control systems, ultimately leading to my more informed design decisions and effective implementation strategies.
 
 \section{Conclusion}
 
-My project successfully demonstrates the design and implementation of a redundant 8-DoF cleaning robot with advanced task-space control capabilities. My key achievements include: (1) Accurate Trajectory Tracking: Sub-millimeter position tracking and degree-level orientation control, (2) Effective Redundancy Resolution: Null-space optimization significantly improves manipulability, (3) Robust Control Design: Task-space inverse dynamics with proper gain tuning, (4) Practical Application: Real-world cleaning task with orientation constraints.
-
-My integration of a pan-tilt platform with a robotic arm showcases the benefits of kinematic redundancy in service robotics applications. My null-space optimization strategy effectively exploits the additional degrees of freedom to enhance robot conditioning while maintaining primary task performance.
+This project demonstrates the design and implementation of a redundant 8-DoF cleaning robot with advanced task-space control capabilities. 
+The integration of a pan-tilt platform with a robotic arm showcases the benefits of kinematic redundancy in service robotics applications while null-space optimization strategy effectively exploits the additional degrees of freedom to enhance robot conditioning while maintaining primary task performance.
 
 \begin{thebibliography}{99}
 \bibitem{yoshikawa1985}
 T. Yoshikawa, ``Manipulability of robotic mechanisms,'' \emph{The International Journal of Robotics Research}, vol. 4, no. 2, pp. 3--9, 1985. [Online]. Available: https://tsuneo-yoshikawa.my.coocan.jp/PDF-of-Papers/1985-EP2.pdf
-
-\bibitem{nakamura1991}
-Y. Nakamura, \emph{Advanced Robotics: Redundancy and Optimization}. Reading, MA: Addison-Wesley, 1991.
-
-\bibitem{siciliano2010}
-B. Siciliano, L. Sciavicco, L. Villani, and G. Oriolo, \emph{Robotics: Modelling, Planning and Control}. London: Springer-Verlag, 2010.
-
-\bibitem{pinocchio}
-J. Carpentier et al., ``Pinocchio: Fast forward and inverse dynamics for open-source robotics,'' \emph{IEEE Robotics and Automation Letters}, vol. 4, no. 4, pp. 3734--3741, 2019.
 
 \bibitem{unitree}
 Unitree Robotics, ``Z1 Technical Specifications,'' 2023. [Online]. Available: https://www.unitree.com/z1

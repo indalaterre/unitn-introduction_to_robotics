@@ -1,15 +1,3 @@
-"""
-Robot Model Module
-==================
-Loads the 8-DoF cleaning robot URDF into Pinocchio and provides:
-- Forward Kinematics (FK)
-- Jacobian computation (spatial and body)
-- Jdot * qdot computation
-- Mass matrix M(q)
-- Bias forces h(q, qdot) = C(q,qdot)*qdot + g(q)
-- Manipulability computation and gradient
-"""
-
 import os
 import numpy as np
 import pinocchio as pin
@@ -464,59 +452,3 @@ class RobotModel:
             q = self.clip_to_limits(q)
         
         return q, False
-
-
-def test_robot_model():
-    """Test the robot model functionality."""
-    print("=" * 60)
-    print("Testing Robot Model")
-    print("=" * 60)
-    
-    # Load model
-    robot = RobotModel()
-    
-    # Test with home configuration
-    q = robot.get_home_configuration()
-    dq = np.zeros(robot.nv)
-    
-    print(f"\nHome configuration: {q}")
-    
-    # Forward kinematics
-    pos, rot = robot.get_tool_pose(q)
-    print(f"\nTool tip position: {pos}")
-    print(f"Tool tip rotation:\n{rot}")
-    
-    # Jacobian
-    J = robot.get_jacobian(q)
-    print(f"\nJacobian shape: {J.shape}")
-    print(f"Jacobian (position rows):\n{np.round(J[:3, :], 3)}")
-    
-    # Mass matrix
-    M = robot.get_inertia_matrix(q)
-    print(f"\nMass matrix shape: {M.shape}")
-    print(f"Mass matrix diagonal: {np.round(np.diag(M), 4)}")
-    
-    # Manipulability
-    w = robot.compute_yoshikawa_manipulability(q)
-    print(f"\nManipulability: {w:.6f}")
-    
-    # Manipulability gradient
-    grad = robot.compute_manipulability_gradient(q)
-    print(f"Manipulability gradient: {np.round(grad, 6)}")
-    
-    # Bias forces
-    h = robot.get_bias_forces(q, dq)
-    print(f"\nBias forces (gravity): {np.round(h, 4)}")
-    
-    # Test inverse dynamics
-    ddq = np.zeros(robot.nv)
-    tau = robot.inverse_dynamics(q, dq, ddq)
-    print(f"Torques for static hold: {np.round(tau, 4)}")
-    
-    print("\n" + "=" * 60)
-    print("Robot Model Test Complete")
-    print("=" * 60)
-
-
-if __name__ == '__main__':
-    test_robot_model()

@@ -1,23 +1,4 @@
-#!/usr/bin/env python3
-"""
-Locosim/ROS Simulation Runner
-=============================
-Interfaces with Locosim/ROS to run the cleaning robot simulation.
-- Loads robot model and publishes joint states
-- Runs task-space inverse dynamics control loop
-- Logs data for analysis
-
-Usage:
-    # With ROS/Locosim:
-    roslaunch cleaning_robot display.launch
-    python run_sim.py --mode ros
-    
-    # Standalone (no ROS):
-    python run_sim.py --mode standalone
-"""
-
 import sys
-import os
 import argparse
 import numpy as np
 
@@ -34,13 +15,13 @@ except ImportError:
     print("[Warning] ROS not available, running in standalone mode only")
 
 from robot_model import RobotModel
-from trajectory import CleaningTrajectory, CircularTrajectory
+from trajectory import CleaningTrajectory
 from controller import TaskSpaceController, SimulationLogger
 
 
 class ROSSimulation:
     """
-    ROS-based simulation interface for Locosim.
+    ROS-based simulation interface
     """
     
     def __init__(self, robot, controller, trajectory, dt=0.001):
@@ -126,8 +107,9 @@ class ROSSimulation:
                 marker.points.append(p)
         
         self.traj_marker_pub.publish(marker)
-    
-    def init_robot_trajectory_marker(self):
+
+    @staticmethod
+    def init_robot_trajectory_marker():
         marker = Marker()
         marker.header.frame_id = 'world'
         marker.header.stamp = rospy.Time.now()
@@ -237,7 +219,7 @@ class ROSSimulation:
             # Compute control
             tau, info = self.controller.compute_control(q, dq, pose_ref, twist_ref, accel_ref)
             
-            # Get the current tool pose and store trajectory point
+            # Get the current tool pose and store the trajectory point
             current_pos, _ = self.robot.get_tool_pose(q)
             self.publish_robot_trajectory_marker(robot_trajectory_marker, current_pos)
             
@@ -398,13 +380,13 @@ def main():
     parser.add_argument('--mode', type=str, default='standalone',
                         choices=['ros', 'standalone', 'compare'],
                         help='Simulation mode')
-    parser.add_argument('--duration', type=float, default=20.0,
+    parser.add_argument('--duration', type=float, default=40.0,
                         help='Simulation duration (seconds)')
     parser.add_argument('--dt', type=float, default=0.001,
                         help='Time step (seconds)')
-    parser.add_argument('--radius', type=float, default=0.12,
+    parser.add_argument('--radius', type=float, default=0.2,
                         help='Circle radius (meters)')
-    parser.add_argument('--omega', type=float, default=0.3,
+    parser.add_argument('--omega', type=float, default=1,
                         help='Angular velocity (rad/s)')
     parser.add_argument('--k_null', type=float, default=5.0,
                         help='Null-space gain')
@@ -446,13 +428,14 @@ def main():
     pos_home, rot_home = robot.get_tool_pose(q_home)
     print(f"\nHome config tool position: {pos_home}")
     print(f"Home config tool z-axis: {rot_home[:, 2]}")
-    
-    # Desired orientation: tool z-axis pointing DOWN (-Z world)
-    # R_desired rotates so tool z points in -Z direction
+
+    # Desired orientation: tool z-axis pointing DOWN
+    # This means R_des rotates by 180° (π rad) the world frame on the X axis so that:
+    # R_des = Rx(π)
     R_desired = np.array([
-        [1.0,  0.0,  0.0],
-        [0.0, -1.0,  0.0],
-        [0.0,  0.0, -1.0]
+        [1.0, 0.0, 0.0 ], # | 1.0  0.0  0.0  |
+        [0.0, -1.0, 0.0], # | 0.0 c(π) -s(π) |
+        [0.0, 0.0, -1.0]  # | 0.0 s(π)  c(π) |
     ])
     
     # Set trajectory center based on reachable workspace

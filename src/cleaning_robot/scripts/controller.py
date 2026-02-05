@@ -1,21 +1,3 @@
-"""
-Task-Space Inverse Dynamics Controller
-=======================================
-Implements:
-1. Primary task: Pose tracking using task-space inverse dynamics
-2. Secondary task: Manipulability maximization in null space
-
-Controller equation:
-    tau = M(q) * qddot + h(q, qdot)
-
-where:
-    qddot = qddot_task + qddot_null
-    qddot_task = J# * (xddot* - Jdot*qdot)
-    qddot_null = k_null * N * grad(w)
-    
-    xddot* = xddot_ref + Kd*(xdot_ref - xdot) + Kp*e
-    e = [e_pos; e_rot]  (position and orientation errors)
-"""
 from typing import Any
 
 import numpy as np
@@ -95,7 +77,7 @@ class TaskSpaceController:
 
         self.print_timer = 0
     
-    def compute_control(self, q, dq, pose_ref, twist_ref, accel_ref):
+    def compute_control(self, q, dq, pose_ref, twist_ref, accel_ref, manip_threshold=.06):
         # Update robot kinematics
         self.robot.update_kinematics(q, dq)
         pose_current = self.robot.forward_kinematics(q)
@@ -110,11 +92,11 @@ class TaskSpaceController:
         current_damping = self.damping
         
         # Dynamic Damping: Increase damping progressively as manipulability drops
-        if manip < 0.06:
+        if manip < manip_threshold:
             # More aggressive damping increase starting earlier
-            current_damping += (0.06 - manip) * 50.0
+            current_damping += (manip_threshold - manip) * 50.0
             
-        # Create the SAFE Pseudoinverse using the calculated damping
+        # Create a safe Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
 
         # --- PRIMARY TASK (Cleaning) ---
@@ -199,6 +181,8 @@ class TaskSpaceController:
         xddot_star = accel_ref + self.Kd @ xdot_error + self.Kp @ error
         Jdot_qdot = self.robot.get_jacobian_derivative(q, dq)
 
+        # We need to subtract the Jacobian derivative because the goal is to get only
+        # the accelerations coming from the joint torques
         qddot_task = J_pinv @ (xddot_star - Jdot_qdot)
         return qddot_task, xdot
 

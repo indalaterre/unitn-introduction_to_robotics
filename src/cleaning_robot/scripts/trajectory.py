@@ -1,12 +1,3 @@
-"""
-Trajectory Generator Module
-===========================
-Generates reference trajectories for the cleaning robot:
-- Horizontal circular trajectory of radius 0.20 m
-- End-effector perpendicular to table (tool z-axis pointing down)
-- Outputs: SE3 pose, twist, and task acceleration references
-"""
-
 import numpy as np
 import pinocchio as pin
 
@@ -45,15 +36,12 @@ class CircularTrajectory:
             self.center[2] = self.height  # Ensure the correct height
         
         # Desired orientation: tool z-axis pointing DOWN
-        # This means R_des rotates the world frame so that:
-        # - Tool x-axis points in the world +X (forward)
-        # - Tool y-axis points in the world +Y (left)
-        # - Tool z-axis points in world -Z (down toward table)
-        # R_des = Ry(pi) to flip z-axis
+        # This means R_des rotates by 180° (π rad) the world frame on the X axis so that:
+        # R_des = Rx(π)
         self.R_desired = np.array([
-            [1.0,  0.0,  0.0],
-            [0.0, -1.0,  0.0],
-            [0.0,  0.0, -1.0]
+            [1.0,  0.0,  0.0], # | 1.0  0.0  0.0  |
+            [0.0, -1.0,  0.0], # | 0.0 c(π) -s(π) |
+            [0.0,  0.0, -1.0]  # | 0.0 s(π)  c(π) |
         ])
         
         # Period of one full circle
@@ -326,18 +314,20 @@ class CartesianTrajectory:
         self.q_start = pin.Quaternion(self.R_start)
         self.q_end = pin.Quaternion(self.R_end)
         
-        # Ensure quaternions are normalized and use shortest path
+        # Ensure quaternions are normalized and use the shortest path
         if self.q_start.dot(self.q_end) < 0:
-            self.q_end.coeffs *= -1  # Take shortest path
+            self.q_end.coeffs *= -1  # Take the shortest path
         
         # Compute maximum velocity during constant phase
         # Total distance = area under velocity trapezoid
         # s = 0.5 * v_max * t_accel + v_max * t_const + 0.5 * v_max * t_decel
         # s = v_max * (duration - 0.5 * t_accel - 0.5 * t_decel)
-        total_distance = np.linalg.norm(self.p_end - self.p_start)
+
+        pos_difference = self.p_end - self.p_start
+        total_distance = np.linalg.norm(pos_difference)
         if total_distance > 1e-6:
             self.v_max = total_distance / (duration - 0.5 * self.t_accel - 0.5 * self.t_decel)
-            self.direction = (self.p_end - self.p_start) / total_distance
+            self.direction = pos_difference / total_distance
         else:
             self.v_max = 0.0
             self.direction = np.zeros(3)
@@ -376,7 +366,7 @@ class CartesianTrajectory:
     
     def _get_position_from_velocity(self, t):
         """
-        Integrate velocity profile to get position along trajectory.
+        Integrate the velocity profile to get position along trajectory.
         
         Returns:
             s: position parameter [0, 1]
@@ -530,7 +520,7 @@ class CleaningTrajectory:
             )
             print(f"[CleaningTrajectory] Using QUINTIC polynomial interpolation")
         else:
-            # Cartesian linear interpolation (constant velocity)
+            # Cartesian linear interpolation use a trapezoidal velocity profile
             self.approach_traj = CartesianTrajectory(
                 p_start=p_init,
                 p_end=circle_start_pose.translation,

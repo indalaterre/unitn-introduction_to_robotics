@@ -1,21 +1,3 @@
-#!/usr/bin/env python3
-"""
-Plot Results Module
-===================
-Generates comprehensive plots from cleaning robot simulation logs.
-
-Features:
-- Tracking error analysis (position and orientation)
-- Performance metrics (manipulability, torques)
-- Trajectory visualization (3D and 2D)
-- Comparison plots (with vs without optimization)
-
-Usage:
-    python plot_results.py simulation_data.npz
-    python plot_results.py --compare data_with_manip.npz data_without_manip.npz
-    python plot_results.py --data_file results.npz --output figures --show
-"""
-
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -25,7 +7,7 @@ from pathlib import Path
 
 def load_data(filename):
     """
-    Load simulation data from .npz file.
+    Load simulation data from a .npz file.
     
     Args:
         filename: Path to .npz file containing simulation data
@@ -34,8 +16,8 @@ def load_data(filename):
         Dictionary with simulation data arrays
         
     Raises:
-        FileNotFoundError: If file doesn't exist
-        ValueError: If file format is invalid
+        FileNotFoundError: If the file doesn't exist
+        ValueError: If the file format is invalid
     """
     filepath = Path(filename)
     if not filepath.exists():
@@ -61,7 +43,7 @@ def plot_tracking_errors(data, save_prefix='results'):
     """
     time = data['time']
     
-    # Create figure with 2 subplots for tracking errors
+    # Create the figure with 2 subplots for tracking errors
     fig, axes = plt.subplots(2, 1, figsize=(10, 10))
     
     # Find approach phase end
@@ -132,7 +114,7 @@ def plot_performance_metrics(data, save_prefix='results'):
     """
     time = data['time']
     
-    # Create figure with 2 subplots for performance metrics
+    # Create the figure with 2 subplots for performance metrics
     fig, axes = plt.subplots(2, 1, figsize=(10, 8))
     
     # Find approach phase end
