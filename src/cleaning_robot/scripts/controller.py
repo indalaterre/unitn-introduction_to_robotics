@@ -1,5 +1,3 @@
-from typing import Any
-
 import numpy as np
 import pinocchio as pin
 from trajectory import compute_pose_error
@@ -55,16 +53,16 @@ class TaskSpaceController:
         self.last_tau = np.zeros(self.robot.nq)
 
         self.q_posture = np.array([
-            0.0, 0.0,        # Platform
+            0.0, 0.0,        # Platform (neutral - joint 1 was hitting limits)
             0.0,             # Base Yaw
-            -0.5,            # Shoulder Pitch (tilt arm down/forward)
-            1.2,             # Elbow Pitch (bend FORWARD, away from base)
-            0.0,             # Wrist Yaw
-            -0.7,            # Wrist Pitch (compensate to keep tool down)
-            0.0              # Wrist Roll
+            -0.3,            # Shoulder Pitch (moderate downward)
+            0.6,             # Elbow Pitch (moderate bend)
+            0.3,             # Wrist Yaw (moderate rotation)
+            0.0,             # Wrist Pitch (neutral - joint 6 was hitting limits)
+            0.0              # Wrist Roll (keep neutral)
         ])
-        self.kp_posture = 400
-        self.kd_posture = 40
+        self.kp_posture = 600
+        self.kd_posture = 2 * np.sqrt(self.kp_posture)
         
         print(f"[Controller] Initialized:")
         print(f"  Kp_pos: {kp_pos}, Kd_pos: {kd_pos}")
@@ -77,7 +75,7 @@ class TaskSpaceController:
 
         self.print_timer = 0
     
-    def compute_control(self, q, dq, pose_ref, twist_ref, accel_ref, manip_threshold=.06):
+    def compute_control(self, q, dq, pose_ref, twist_ref, accel_ref, manip_threshold=.025):
         # Update robot kinematics
         self.robot.update_kinematics(q, dq)
         pose_current = self.robot.forward_kinematics(q)
@@ -93,8 +91,9 @@ class TaskSpaceController:
         
         # Dynamic Damping: Increase damping progressively as manipulability drops
         if manip < manip_threshold:
-            # More aggressive damping increase starting earlier
-            current_damping += (manip_threshold - manip) * 50.0
+            # Exponential damping increase as we approach singularity
+            ratio = (manip_threshold - manip) / manip_threshold  # 0 to 1
+            current_damping += (ratio ** 2) * 100.0  # Quadratic scaling up to +100
             
         # Create a safe Pseudoinverse using the calculated damping
         J_pinv = self.robot.damped_pseudoinverse(J, current_damping)
@@ -144,8 +143,8 @@ class TaskSpaceController:
         
         return tau, info
 
-    def calculate_secondary_task(self, J, current_damping: float, dq, manip, q) -> Any:
 
+    def calculate_secondary_task(self, J, current_damping: float, dq, manip, q):
         qddot_null = np.zeros(self.robot.nq)
         if self.use_manipulability:
             # Calculating the secondary task wrt the specified joint configuration
@@ -175,7 +174,7 @@ class TaskSpaceController:
 
         return qddot_null
 
-    def calculate_primary_task(self, J, J_pinv, accel_ref, dq, error, q, twist_ref) -> tuple[Any, Any]:
+    def calculate_primary_task(self, J, J_pinv, accel_ref, dq, error, q, twist_ref):
         xdot = J @ dq
         xdot_error = twist_ref - xdot
         xddot_star = accel_ref + self.Kd @ xdot_error + self.Kp @ error

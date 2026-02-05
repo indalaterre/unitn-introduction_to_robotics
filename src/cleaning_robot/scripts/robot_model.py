@@ -240,6 +240,9 @@ class RobotModel:
             w: Manipulability scalar
         """
         J = self.get_jacobian(q)
+        # We're only working with position control.
+        # We can use only the linear part of the Jacobian
+        J = J[:3, :]
 
         det_val = np.linalg.det(J @ J.T)
         det_val = np.clip(det_val, damping_lambda, None)

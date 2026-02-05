@@ -441,7 +441,7 @@ def main():
     # Set trajectory center based on reachable workspace
     # The arm at home extends ~0.55m in X, so center circle closer to base
     # Use a center that's reachable with the arm bent
-    circle_center = [0.50, 0.0, 0.15]  # Fixed center within workspace
+    circle_center = [0.45, 0.0, 0.15]  # Fixed center within workspace
     
     # Circle start point (where the cleaning circle begins)
     circle_start = np.array([
@@ -489,7 +489,7 @@ def main():
         'kd_pos': kd_approach,
         'kp_rot': kp_rotation,
         'kd_rot': kd_rotation,
-        'k_null': min(args.k_null, 2.0),  # Lower gain prioritizes tracking over manipulability
+        'k_null': args.k_null,  # Lower gain prioritizes tracking over manipulability
         'damping': 0.1  # Much higher damping to prevent singularity issues
     }
     
