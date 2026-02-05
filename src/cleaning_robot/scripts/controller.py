@@ -155,7 +155,7 @@ class TaskSpaceController:
 
             # It's preferable to optimize manipulability only in safe regions
             # Near singularities small errors in the Jacobian can cause large errors in gradient
-            if self.k_null > 0 and manip > 0.055:
+            if self.k_null > 0 and manip > 0.04:
                 grad_w = self.robot.compute_manipulability_gradient(q)
                 qddot_secondary += self.k_null * grad_w
 
