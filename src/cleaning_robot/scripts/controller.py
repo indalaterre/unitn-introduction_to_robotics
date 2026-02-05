@@ -147,11 +147,9 @@ class TaskSpaceController:
     def calculate_secondary_task(self, J, current_damping: float, dq, manip, q):
         qddot_null = np.zeros(self.robot.nq)
         if self.use_manipulability:
-            # Calculating the secondary task wrt the specified joint configuration
-
+            # Calculating the secondary task w.r.t. the specified joint configuration
             # q_accel = Kp*(q_des - q) - Kd*dq
             qddot_secondary = self.kp_posture * (self.q_posture - q) - self.kd_posture * dq
-
 
             # It's preferable to optimize manipulability only in safe regions
             # Near singularities small errors in the Jacobian can cause large errors in gradient
@@ -320,57 +318,3 @@ def simulate_standalone(robot, controller, trajectory,
     
     print("[Simulation] Complete")
     return logger
-
-
-def test_controller():
-    """Test the controller with standalone simulation."""
-    from robot_model import RobotModel
-    from trajectory import CleaningTrajectory
-    
-    print("=" * 60)
-    print("Testing Task-Space Controller")
-    print("=" * 60)
-    
-    # Load robot
-    robot = RobotModel()
-    
-    # Initial configuration
-    q_init = robot.get_home_configuration()
-    
-    # Create trajectory
-    trajectory = CleaningTrajectory(
-        robot_model=robot,
-        q_init=q_init,
-        circle_center=[0.35, 0.0, 0.05],
-        circle_radius=0.15,
-        circle_omega=0.3,
-        approach_duration=3.0
-    )
-    
-    # Create controller
-    controller = TaskSpaceController(
-        robot_model=robot,
-        kp_pos=200.0,
-        kd_pos=40.0,
-        kp_rot=150.0,
-        kd_rot=30.0,
-        k_null=10.0,
-        use_manipulability=True
-    )
-    
-    # Run simulation
-    duration = 15.0  # 3s approach + ~12s cleaning
-    logger = simulate_standalone(robot, controller, trajectory, q_init, duration, dt=0.001)
-    
-    # Save data
-    logger.save('simulation_data.npz')
-    
-    print("\n" + "=" * 60)
-    print("Controller Test Complete")
-    print("=" * 60)
-    
-    return logger
-
-
-if __name__ == '__main__':
-    test_controller()

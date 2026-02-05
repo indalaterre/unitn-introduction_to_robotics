@@ -305,7 +305,7 @@ Fig.~\ref{fig:tracking_errors} presents the time evolution of position and orien
 The effectiveness of null-space optimization is clearly demonstrated in Fig.~\ref{fig:joint_torques}. With manipulability optimization, the robot maintains healthy manipulability values (0.06-0.07) throughout the trajectory, while the baseline system experiences dramatic drops to near-singular configurations (0.02-0.03).
 
 \subsubsection{Joint Torque Analysis}
-Fig.~\ref{fig:joint_torques} shows the joint torque requirements for all 8 DOFs during the cleaning motion. The torques remain within safe limits, with the platform joints (0-1) and shoulder/elbow joints (3-4) carrying the primary load due to their significant contribution to end-effector positioning.
+Fig.~\ref{fig:joint_torques} shows the joint torque requirements for all 8 DOFs during the cleaning motion. The torques remain within safe limits, with the platform joints (0-1) and shoulder/elbow joints (3-4) carrying the primary load due to their significant contribution to end-effector positioning. It's worth to notice the absence of work of joint (5-6). Their primary goal is to keep the end-effector fixed at it's position.
 
 \begin{figure}[h]
 	\centering
@@ -328,8 +328,6 @@ Fig.~\ref{fig:screenshot_without_manip} reveals the catastrophic tracking failur
 The performance degradation without null-space optimization manifests through several critical failure modes:
 
 \begin{itemize}
-    \item \textbf{Manipulability Collapse}: Drop from 0.06-0.07 (healthy) to 0.02-0.03 (near-singular)
-    \item \textbf{Tracking Degradation}: Position errors explode from mm to cm scale
     \item \textbf{Orientation Loss}: Complete failure to maintain tool perpendicularity
     \item \textbf{Control Instability}: Pseudoinverse singularity prevents valid joint commands
 \end{itemize}
